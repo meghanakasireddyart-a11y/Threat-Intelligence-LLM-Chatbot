@@ -195,20 +195,40 @@ def generate_expert_rag_response(query: str, retrieved_sources: List[Dict[str, A
 class WebHandler(http.server.BaseHTTPRequestHandler):
     scanner = VulnerabilityScanner()
 
+    def do_OPTIONS(self):
+        """Handle preflight CORS requests from browsers."""
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)
         if url.path == "/" or url.path == "/index.html":
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             html_file = os.path.join(os.path.dirname(__file__), "index.html")
             with open(html_file, "rb") as f:
-                self.wfile.write(f.read())
+                content = f.read()
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
         elif url.path == "/api/threats":
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache")
+            body = json.dumps(THREAT_RECORDS).encode("utf-8")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(json.dumps(THREAT_RECORDS).encode("utf-8"))
+            self.wfile.write(body)
         elif url.path == "/api/status":
             models = get_ollama_models()
             status_payload = {
@@ -217,10 +237,14 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 "knowledge_chunks": len(CACHED_KNOWLEDGE),
                 "threat_records": len(CACHED_THREATS)
             }
+            body = json.dumps(status_payload).encode("utf-8")
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(json.dumps(status_payload).encode("utf-8"))
+            self.wfile.write(body)
         elif url.path == "/api/run_exercises":
             import subprocess
             res = subprocess.run(
@@ -228,10 +252,13 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 capture_output=True,
                 text=True
             )
+            body = res.stdout.encode("utf-8")
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(res.stdout.encode("utf-8"))
+            self.wfile.write(body)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -317,25 +344,34 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                         "text": s["text"][:180] + ("..." if len(s["text"]) > 180 else "")
                     })
 
+            resp_body = json.dumps({"response": resp, "sources": sources}).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(resp_body)))
             self.end_headers()
-            self.wfile.write(json.dumps({"response": resp, "sources": sources}).encode("utf-8"))
+            self.wfile.write(resp_body)
 
         elif url.path == "/api/scan":
             scan_res = self.scanner.run_full_scan(project_dir=".")
+            resp_body = json.dumps(scan_res).encode("utf-8")
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(resp_body)))
             self.end_headers()
-            self.wfile.write(json.dumps(scan_res).encode("utf-8"))
+            self.wfile.write(resp_body)
 
         elif url.path == "/api/mitigate":
             cve = payload.get("cve_id", "")
             mit_res = self.scanner.apply_mitigation(cve, confirmed=True, project_dir=".")
+            resp_body = json.dumps(mit_res).encode("utf-8")
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(resp_body)))
             self.end_headers()
-            self.wfile.write(json.dumps(mit_res).encode("utf-8"))
+            self.wfile.write(resp_body)
 
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
