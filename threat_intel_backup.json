@@ -1,0 +1,339 @@
+[
+  {
+    "threat_id": "THREAT-LNX-001",
+    "name": "xz-utils Supply Chain Backdoor (CVE-2024-3094)",
+    "platform": "Linux",
+    "status": "Resolved",
+    "severity": "Critical",
+    "cve_id": "CVE-2024-3094",
+    "cvss_score": 10.0,
+    "description": "Malicious code injected into upstream tarballs of xz-utils liblzma modifying sshd authentication routines to enable remote code execution via unauthorized public keys.",
+    "attack_vector": "Supply Chain Compromise",
+    "indicators_of_compromise": [
+      "liblzma.so.5.6.0",
+      "liblzma.so.5.6.1",
+      "SIGBUS in OpenSSH daemon during authentication",
+      "Hash SHA256: 3192498466d821fb07219c211f69e383ec104e7d06431e16ec4d4238c668a30a",
+      "IP: 198.51.100.42 (Malicious C2 Node)"
+    ],
+    "mitigation_steps": "1. Check installed xz version: xz --version\n2. Downgrade xz-utils to 5.4.x or upgrade to fixed 5.6.1-patch:\n   sudo apt-get update && sudo apt-get install --only-upgrade xz-utils liblzma5\n3. Restart OpenSSH service: sudo systemctl restart ssh\n4. Verify sshd linking: ldd $(which sshd) | grep lzma",
+    "mitigation_script": "apt-get update && apt-get --only-upgrade install -y xz-utils liblzma5 && systemctl restart ssh",
+    "first_detected": "2024-03-29T10:00:00Z",
+    "last_updated": "2024-04-15T18:30:00Z",
+    "inserted_at": "2026-11-25 03:29:13.238000"
+  },
+  {
+    "cve_id": "CVE-2023-48795",
+    "attack_vector": "Credential Harvesting & Lateral Movement",
+    "cvss_score": 7.5,
+    "description": "Self-replicating worm that crawls Linux systems looking for private SSH keys in shell histories, bashrc, and .ssh directories, dynamically generating traversal paths across secondary subnets.",
+    "first_detected": "2024-01-12T08:00:00Z",
+    "indicators_of_compromise": [
+      "Outbound SSH connections from non-standard system processes",
+      "File modifications to ~/.ssh/known_hosts and /etc/hosts",
+      "Process signature executing base64-decoded bash scripts in /dev/shm"
+    ],
+    "last_updated": "2024-06-10T14:20:00Z",
+    "mitigation_script": "chmod 700 ~/.ssh && chmod 600 ~/.ssh/* && pkill -9 -f '/dev/shm'",
+    "mitigation_steps": "1. Terminate suspicious bash processes running from /dev/shm or /tmp:\n   pkill -f '/dev/shm/.*ssh'\n2. Revoke and rotate all SSH keys across all reachable hosts\n3. Restrict file permissions on ~/.ssh: chmod 700 ~/.ssh && chmod 600 ~/.ssh/id_*\n4. Enforce strict passphrase protection and hardware tokens (FIDO2) for SSH",
+    "name": "SSH Snake Self-Modifying Worm",
+    "platform": "Linux",
+    "severity": "High",
+    "status": "Resolved",
+    "threat_id": "THREAT-LNX-002",
+    "mitigated_at": "2026-11-25T03:29:13.391452+00:00",
+    "mitigation_notes": "Applied strict chmod 700 on ~/.ssh and rotated compromised host credentials."
+  },
+  {
+    "cve_id": "CVE-2024-21626",
+    "attack_vector": "Kernel-level Privilege Persistence",
+    "cvss_score": 8.6,
+    "description": "Adversaries leveraging extended Berkeley Packet Filter (eBPF) tracepoints and kprobes to manipulate syscall returns, stealthily hiding processes, network sockets, and file activity from standard diagnostic tools (ps, netstat, lsof).",
+    "first_detected": "2024-05-18T12:00:00Z",
+    "indicators_of_compromise": [
+      "Unexpected eBPF program IDs loaded into kernel without systemd-bpf or monitoring agent tag",
+      "Discrepancy between raw disk read and /proc filesystem listings",
+      "BPF map size growth in unprivileged namespaces"
+    ],
+    "last_updated": "2024-07-02T16:45:00Z",
+    "mitigation_script": "sysctl -w kernel.unprivileged_bpf_disabled=1 && sysctl -p",
+    "mitigation_steps": "1. Inspect active BPF programs: sudo bpftool prog list\n2. Restrict unprivileged eBPF access:\n   sysctl -w kernel.unprivileged_bpf_disabled=1\n   echo 'kernel.unprivileged_bpf_disabled=1' >> /etc/sysctl.d/99-bpf-hardening.conf\n3. Enforce kernel module signature verification: sysctl -w kernel.modules_disabled=1",
+    "name": "eBPF Rootkit Stealth Kernel Hooks",
+    "platform": "Linux",
+    "severity": "Critical",
+    "status": "Evolving",
+    "threat_id": "THREAT-LNX-003"
+  },
+  {
+    "cve_id": "CVE-PREDICT-2026-01",
+    "attack_vector": "Cryptographic Degradation",
+    "cvss_score": 6.0,
+    "description": "Anticipated 'Harvest Now, Decrypt Later' threat targeting Linux server TLS infrastructure. Adversaries record encrypted enterprise traffic awaiting scalable Shor algorithm implementations.",
+    "first_detected": "2024-06-01T00:00:00Z",
+    "indicators_of_compromise": [
+      "High-volume anomalous egress packet mirroring to unmapped cloud storage",
+      "Legacy RSA-2048 key exchanges in public service endpoints"
+    ],
+    "last_updated": "2024-07-15T09:10:00Z",
+    "mitigation_script": "openssl version && update-crypto-policies --set FUTURE",
+    "mitigation_steps": "1. Update OpenSSL to 3.2+ supporting hybrid post-quantum key exchange (Kyber/ML-KEM)\n2. Configure nginx / Apache to prefer X25519Kyber768Draft00 algorithms\n3. Enforce forward secrecy with ephemeral diffie-hellman suites",
+    "name": "Predictive Post-Quantum Cryptanalysis of TLS Sessions",
+    "platform": "Linux",
+    "severity": "Medium",
+    "status": "Anticipated",
+    "threat_id": "THREAT-LNX-004"
+  },
+  {
+    "cve_id": "CVE-2024-30078",
+    "attack_vector": "Wireless Adjacent Network Vector",
+    "cvss_score": 8.8,
+    "description": "Unauthenticated remote code execution flaw in the Windows Wi-Fi network driver. An attacker within radio proximity can send malicious beacons to execute arbitrary commands without user interaction.",
+    "first_detected": "2024-06-11T17:00:00Z",
+    "indicators_of_compromise": [
+      "Kernel panic (BSOD) in nwifi.sys",
+      "Abnormal 802.11 management frames recorded by wireless monitoring",
+      "Crash dump referencing WLAN_EXT_REASON_CODE"
+    ],
+    "last_updated": "2024-06-25T11:00:00Z",
+    "mitigation_script": "Install-WindowsUpdate -KBArticleID KB5039211 -AcceptAll -AutoReboot",
+    "mitigation_steps": "1. Deploy Microsoft Security Update KB5039211 (June 2024 Patch Tuesday)\n2. Alternatively, disable Wi-Fi adapters when connected via ethernet:\n   Disable-NetAdapter -Name 'Wi-Fi' -Confirm:$false\n3. Enforce 802.1X enterprise network authentication policies",
+    "name": "Windows Wi-Fi Driver Remote Code Execution (CVE-2024-30078)",
+    "platform": "Windows",
+    "severity": "High",
+    "status": "Resolved",
+    "threat_id": "THREAT-WIN-001"
+  },
+  {
+    "cve_id": "CVE-2024-21412",
+    "attack_vector": "Social Engineering & LOLBins",
+    "cvss_score": 8.1,
+    "description": "Active ransomware delivery chain exploiting Internet Shortcut (.URL) file flaws to bypass SmartScreen, executing encoded PowerShell scripts that inject payloads into explorer.exe and svchost.exe.",
+    "first_detected": "2024-02-13T09:00:00Z",
+    "indicators_of_compromise": [
+      "Process explorer.exe spawning powershell.exe with -encodedCommand",
+      "Registry Run key addition under HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "Network traffic to known bulletproof hoster IPs on TCP port 443"
+    ],
+    "last_updated": "2024-07-10T15:30:00Z",
+    "mitigation_script": "Set-MpPreference -AttackSurfaceReductionRules_Ids D4F940AB-401B-4EFC-AADC-AD5F3C50688A -AttackSurfaceReductionRules_Actions Enabled",
+    "mitigation_steps": "1. Block outbound SMB and RPC egress at firewall (TCP 135, 139, 445)\n2. Enable Attack Surface Reduction (ASR) rules:\n   Set-MpPreference -AttackSurfaceReductionRules_Ids D4F940AB-401B-4EFC-AADC-AD5F3C50688A -AttackSurfaceReductionRules_Actions Enabled\n3. Enforce PowerShell Constrained Language Mode via AppLocker or WDAC",
+    "name": "Qakbot / BlackBasta Living-off-the-Land Injections",
+    "platform": "Windows",
+    "severity": "Critical",
+    "status": "Active",
+    "threat_id": "THREAT-WIN-002"
+  },
+  {
+    "cve_id": "CVE-2023-24932",
+    "attack_vector": "Pre-Boot Firmware Compromise",
+    "cvss_score": 7.8,
+    "description": "Evolving UEFI bootkit that bypasses Secure Boot by exploiting revoked boot managers. It disables Hypervisor-Protected Code Integrity (HVCI) and BitLocker before kernel initialization.",
+    "first_detected": "2023-05-09T14:00:00Z",
+    "indicators_of_compromise": [
+      "Unauthorized ESP EFI bootloader file: \\EFI\\Microsoft\\Boot\\bootmgfw.efi modified",
+      "Disabled Defender Credential Guard via registry registry modification",
+      "Absence of measured boot log records in PCR[7]"
+    ],
+    "last_updated": "2024-06-20T17:15:00Z",
+    "mitigation_script": "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Secureboot /v AvailableUpdates /t REG_DWORD /d 64 /f",
+    "mitigation_steps": "1. Apply Windows Security Update for CVE-2023-24932\n2. Update Secure Boot DBX revocation list:\n   Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Secureboot' -Name 'AvailableUpdates' -Value 0x40\n3. Verify firmware TPM 2.0 PCR measurements",
+    "name": "Polymorphic UEFI Bootkit Persistence (BlackLotus Variant)",
+    "platform": "Windows",
+    "severity": "Critical",
+    "status": "Evolving",
+    "threat_id": "THREAT-WIN-003"
+  },
+  {
+    "cve_id": "CVE-ANTICIPATED-2026-WIN",
+    "attack_vector": "Local Data Infiltration",
+    "cvss_score": 7.2,
+    "description": "Anticipated exploitation vector where unprivileged local malware extracts optical character recognition (OCR) and snapshot SQLite databases generated by local AI desktop surveillance features.",
+    "first_detected": "2024-06-05T11:00:00Z",
+    "indicators_of_compromise": [
+      "Access to %LOCALAPPDATA%\\CoreAIPlatform.00\\UKP\\{GUID}\\snapshot.db by non-system apps",
+      "Exfiltration of high-entropy compressed SQLite artifacts"
+    ],
+    "last_updated": "2024-07-01T12:00:00Z",
+    "mitigation_script": "reg add HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsAI /v DisableAIDataAnalysis /t REG_DWORD /d 1 /f",
+    "mitigation_steps": "1. Disable Windows Recall feature via Group Policy:\n   Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsAI' -Name 'DisableAIDataAnalysis' -Value 1\n2. Restrict Read ACLs on user profile CoreAIPlatform folders\n3. Enforce BitLocker full volume encryption",
+    "name": "CoPilot / Recall Local Data Scraping Exposure",
+    "platform": "Windows",
+    "severity": "High",
+    "status": "Anticipated",
+    "threat_id": "THREAT-WIN-004"
+  },
+  {
+    "cve_id": "CVE-2024-27842",
+    "attack_vector": "Trojanized Application Delivery",
+    "cvss_score": 7.8,
+    "description": "Mach-O compiled multistage malware compiled natively for ARM64 (Apple Silicon). Masquerades as legitimate PDF viewers or Webex updates, harvesting Keychain entries and browser cookies.",
+    "first_detected": "2024-02-18T10:00:00Z",
+    "indicators_of_compromise": [
+      "Unsigned dylib loaded into /Library/LaunchAgents/com.apple.updater.plist",
+      "Outbound beaconing to dynamic DNS domains over HTTPS port 8443",
+      "Mach-O binary with ad-hoc code signature not notarized by Apple"
+    ],
+    "last_updated": "2024-06-18T16:00:00Z",
+    "mitigation_script": "spctl --master-enable && rm -f ~/Library/LaunchAgents/com.apple.updater.plist",
+    "mitigation_steps": "1. Unload and delete malicious LaunchAgent:\n   launchctl bootout gui/$(id -u)/com.apple.updater\n   rm -f ~/Library/LaunchAgents/com.apple.updater.plist\n2. Enforce Gatekeeper strict enforcement: spctl --master-enable\n3. Audit Keychain access logs via Console.app",
+    "name": "RustBucket Apple Silicon Native Infostealer",
+    "platform": "MacOS",
+    "severity": "High",
+    "status": "Active",
+    "threat_id": "THREAT-MAC-001"
+  },
+  {
+    "cve_id": "CVE-2024-27878",
+    "attack_vector": "Local Privilege Escalation",
+    "cvss_score": 9.1,
+    "description": "Kernel memory corruption vulnerability in XNU packet filter handling allowing an attacker with local execution to break macOS sandbox isolation and obtain root privileges.",
+    "first_detected": "2024-04-02T13:00:00Z",
+    "indicators_of_compromise": [
+      "Kernel panic log with backtrace in pf_test() or pf_match_rule()",
+      "Unexpected root shell spawned with PPID of standard desktop app"
+    ],
+    "last_updated": "2024-05-20T10:00:00Z",
+    "mitigation_script": "softwareupdate -ia --verbose",
+    "mitigation_steps": "1. Upgrade macOS to version 14.5 (Sonoma) or 13.6.7 (Ventura):\n   softwareupdate --install --all --restart\n2. Verify System Integrity Protection (SIP) is active: csrutil status",
+    "name": "XNU Kernel Double-Free Privilege Escalation",
+    "platform": "MacOS",
+    "severity": "Critical",
+    "status": "Resolved",
+    "threat_id": "THREAT-MAC-002"
+  },
+  {
+    "cve_id": "CVE-2024-44123",
+    "attack_vector": "TCC Permission Hijacking",
+    "cvss_score": 7.4,
+    "description": "Evolving technique where malicious background utilities exploit Accessibility and Screen Recording permissions to simulate programmatic clicks on TCC (Transparency, Consent, and Control) dialogs.",
+    "first_detected": "2024-05-11T15:00:00Z",
+    "indicators_of_compromise": [
+      "Rapid synthetic mouse events without human input hardware interrupt",
+      "Modifications to TCC.db in /Library/Application Support/com.apple.TCC/"
+    ],
+    "last_updated": "2024-07-08T18:10:00Z",
+    "mitigation_script": "tccutil reset Accessibility && tccutil reset ScreenCapture",
+    "mitigation_steps": "1. Audit granted Accessibility apps in System Settings > Privacy & Security > Accessibility\n2. Reset TCC database for accessibility: tccutil reset Accessibility\n3. Enforce Managed Device Profiles forbidding automatic TCC grants",
+    "name": "Synthetic Click Injection via Accessibility API",
+    "platform": "MacOS",
+    "severity": "High",
+    "status": "Evolving",
+    "threat_id": "THREAT-MAC-003"
+  },
+  {
+    "cve_id": "CVE-2024-32896",
+    "attack_vector": "Accessibility Service Abuse & Sideloading",
+    "cvss_score": 8.9,
+    "description": "Android banking trojan that abuses Accessibility Services to record user face scans, intercept SMS OTPs, and forge identity verification on mobile banking platforms.",
+    "first_detected": "2024-02-01T12:00:00Z",
+    "indicators_of_compromise": [
+      "App requesting BIND_ACCESSIBILITY_SERVICE under fake 'System Utility' name",
+      "Hidden camera service foreground notification suppression",
+      "C2 traffic to WebSocket endpoints transmitting base64 biometric payloads"
+    ],
+    "last_updated": "2024-06-28T09:40:00Z",
+    "mitigation_script": "adb shell pm disable-user --user 0 com.mobile.system.utility && adb uninstall com.mobile.system.utility",
+    "mitigation_steps": "1. Revoke Accessibility permissions for untrusted apps in Settings > Accessibility\n2. Uninstall malicious APK via ADB or Safe Mode:\n   adb uninstall com.mobile.system.utility\n3. Enable Google Play Protect and enforce 'Verify Apps over USB'\n4. Contact financial institutions to reset biometric credentials",
+    "name": "GoldPickaxe Facial Biometric Harvesting Trojan",
+    "platform": "Android",
+    "severity": "Critical",
+    "status": "Active",
+    "threat_id": "THREAT-AND-001"
+  },
+  {
+    "cve_id": "CVE-2024-4971",
+    "attack_vector": "Sandbox Escape via Hardware Driver",
+    "cvss_score": 8.4,
+    "description": "Memory corruption flaw in Qualcomm Adreno GPU driver allowing untrusted Chrome renderers or sandboxed apps to achieve physical memory read/write access.",
+    "first_detected": "2024-03-15T08:00:00Z",
+    "indicators_of_compromise": [
+      "Unexpected kernel crash log pointing to kgsl_sharedmem_page_alloc()",
+      "Anomalous OpenGL ES texture allocation sizes in system logcat"
+    ],
+    "last_updated": "2024-06-15T11:00:00Z",
+    "mitigation_script": "adb shell am start -a android.settings.SYSTEM_UPDATE_SETTINGS",
+    "mitigation_steps": "1. Apply Android Security Patch Level 2024-06-01 or later\n2. Update Google Play System components via Settings > Security & Privacy\n3. Enable strict isolatedProcess flags in browser apps",
+    "name": "Android Qualcomm Adreno GPU Kernel Memory Corruption",
+    "platform": "Android",
+    "severity": "High",
+    "status": "Resolved",
+    "threat_id": "THREAT-AND-002"
+  },
+  {
+    "cve_id": "CVE-EVOLVE-AND-RCS",
+    "attack_vector": "Encrypted P2P Mobile Phishing",
+    "cvss_score": 6.8,
+    "description": "Evolving campaign using Rich Communication Services (RCS) protocols to automatically deliver polymorphic phishing URLs with end-to-end encryption bypassing carrier-side SMS spam filters.",
+    "first_detected": "2024-05-22T14:30:00Z",
+    "indicators_of_compromise": [
+      "High rate of outbound RCS packets generated during standby",
+      "Unrecognized active sessions in Google Messages Web pairing"
+    ],
+    "last_updated": "2024-07-12T13:20:00Z",
+    "mitigation_script": "adb shell am force-stop com.google.android.apps.messaging",
+    "mitigation_steps": "1. Temporarily disable RCS Chats in Google Messages Settings > RCS chats\n2. Terminate all unpaired Web sessions in Messages for Web\n3. Enforce carrier spam protection filter settings",
+    "name": "RCS Automated Message Spreading Botnet",
+    "platform": "Android",
+    "severity": "Medium",
+    "status": "Evolving",
+    "threat_id": "THREAT-AND-003"
+  },
+  {
+    "cve_id": "CVE-2023-41990",
+    "attack_vector": "Zero-Click iMessage Attachment",
+    "cvss_score": 9.8,
+    "description": "Zero-click iMessage attachment exploit chaining font parsing vulnerabilities with undocumented Apple A-series SoC hardware MMIO registers to execute kernel payloads and install Pegasus-style spyware.",
+    "first_detected": "2023-09-15T18:00:00Z",
+    "indicators_of_compromise": [
+      "Hidden attachment file named attachment.png with malformed TrueType font table",
+      "Unexpected crash logs of MobileSMS daemon",
+      "Anomalous background network connections to cloud hosting nodes over TLS"
+    ],
+    "last_updated": "2024-03-10T12:00:00Z",
+    "mitigation_script": "echo 'Enable Lockdown Mode via iOS Settings > Privacy & Security > Lockdown Mode'",
+    "mitigation_steps": "1. Update iOS to version 17.0.1 or later immediately\n2. Turn on Lockdown Mode in Settings > Privacy & Security > Lockdown Mode:\n   Blocks message attachments, complex web technologies, and incoming FaceTime requests\n3. Reboot device daily to clear volatile memory implants",
+    "name": "Operation Triangulation Zero-Click iMessage Exploit",
+    "platform": "iOS",
+    "severity": "Critical",
+    "status": "Resolved",
+    "threat_id": "THREAT-IOS-001"
+  },
+  {
+    "cve_id": "CVE-2024-27834",
+    "attack_vector": "Web Browser Drive-by Download",
+    "cvss_score": 8.8,
+    "description": "Actively exploited type confusion vulnerability in WebKit JIT compiler. Processing maliciously crafted web content leads to arbitrary code execution within the Safari content process sandbox.",
+    "first_detected": "2024-04-18T10:00:00Z",
+    "indicators_of_compromise": [
+      "Safari crash logs showing SIGSEGV in JSC::JITCompiler::compile()",
+      "Redirection to domain names registered on newly minted TLDs (.top, .xyz)"
+    ],
+    "last_updated": "2024-06-22T17:00:00Z",
+    "mitigation_script": "echo 'Install iOS 17.5.1 via Settings > General > Software Update'",
+    "mitigation_steps": "1. Update device to iOS 17.5.1 / iPadOS 17.5.1\n2. Enable Safari Advanced Tracking and Fingerprinting Protection\n3. Disable JavaScript for untrusted networks in Settings > Safari > Advanced",
+    "name": "WebKit Type Confusion Remote Code Execution",
+    "platform": "iOS",
+    "severity": "High",
+    "status": "Active",
+    "threat_id": "THREAT-IOS-002"
+  },
+  {
+    "cve_id": "CVE-ANTICIPATED-2026-ANE",
+    "attack_vector": "Microarchitectural Side-Channel",
+    "cvss_score": 6.5,
+    "description": "Anticipated side-channel vulnerability where unprivileged apps measure microarchitectural timing and power variance in Apple Neural Engine (ANE) tensor computations to reconstruct cryptographic keys.",
+    "first_detected": "2024-06-12T09:00:00Z",
+    "indicators_of_compromise": [
+      "Continuous background ANE execution cycles by foreground utility apps",
+      "High-precision timer queries using mach_absolute_time() in loops"
+    ],
+    "last_updated": "2024-07-05T14:00:00Z",
+    "mitigation_script": "echo 'Verify background app refresh is disabled for unverified apps'",
+    "mitigation_steps": "1. Enforce App Store review gating on CoreML / ANE timing precision\n2. Implement constant-time blinding in high-security crypto modules\n3. Monitor background battery and neural compute drain per application",
+    "name": "Side-Channel Key Extraction via Neural Engine",
+    "platform": "iOS",
+    "severity": "Medium",
+    "status": "Anticipated",
+    "threat_id": "THREAT-IOS-003"
+  }
+]
