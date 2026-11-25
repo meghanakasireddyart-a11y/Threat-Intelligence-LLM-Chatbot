@@ -291,7 +291,7 @@ def inspect_host_software_and_system(query: str) -> Optional[Dict[str, Any]]:
         }
 
     # 6. System / PC Specs / OS Check
-    if any(k in q for k in ["pc spec", "system spec", "system info", "what is my pc", "os version", "specs of my pc", "my pc", "my computer"]):
+    if any(k in q for k in ["pc spec", "system spec", "system info", "what is my pc", "os version", "specs of my pc", "my pc", "my computer"]) and not any(w in q for w in ["installed", "apps", "software", "programs"]):
         import platform
         resp = (
             f"### 💻 Host System Specifications & Hardware Information\n\n"
@@ -307,6 +307,216 @@ def inspect_host_software_and_system(query: str) -> Optional[Dict[str, Any]]:
             "response": resp,
             "sources": [{"source": "Windows Platform & OS Architecture Audit", "score": 1.0, "text": platform.platform()}]
         }
+
+    # 7. Universal Windows Installed Applications Scanner (Registry + Start Menu + AppData + PATH + UWP)
+    def _collect_installed_windows_apps() -> List[Dict[str, str]]:
+        apps_map: Dict[str, Dict[str, str]] = {}
+        try:
+            import winreg
+            roots = [
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            ]
+            for root, reg_path in roots:
+                try:
+                    with winreg.OpenKey(root, reg_path) as key:
+                        sub_count = winreg.QueryInfoKey(key)[0]
+                        for i in range(sub_count):
+                            try:
+                                sub_name = winreg.EnumKey(key, i)
+                                with winreg.OpenKey(key, sub_name) as sk:
+                                    vals = {}
+                                    val_count = winreg.QueryInfoKey(sk)[1]
+                                    for j in range(val_count):
+                                        vn, vv, _ = winreg.EnumValue(sk, j)
+                                        vals[vn] = vv
+                                    dname = str(vals.get("DisplayName", "")).strip()
+                                    if not dname:
+                                        continue
+                                    key_l = dname.lower()
+                                    if key_l not in apps_map:
+                                        apps_map[key_l] = {
+                                            "name": dname,
+                                            "version": str(vals.get("DisplayVersion", "")).strip(),
+                                            "publisher": str(vals.get("Publisher", "")).strip(),
+                                            "location": str(vals.get("InstallLocation", "")).strip(),
+                                            "source": "Windows Registry",
+                                        }
+                            except Exception:
+                                continue
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Scan Start Menu shortcuts (.lnk) and LocalAppData\Programs
+        start_dirs = [
+            os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), r"Microsoft\Windows\Start Menu\Programs"),
+            os.path.expanduser(r"~\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"),
+        ]
+        for sdir in start_dirs:
+            if os.path.exists(sdir):
+                for rdir, _, files in os.walk(sdir):
+                    for fn in files:
+                        if fn.lower().endswith(".lnk"):
+                            app_title = fn[:-4].strip()
+                            if app_title.lower().startswith("uninstall"):
+                                continue
+                            kl = app_title.lower()
+                            if kl not in apps_map:
+                                apps_map[kl] = {
+                                    "name": app_title,
+                                    "version": "",
+                                    "publisher": "",
+                                    "location": os.path.join(rdir, fn),
+                                    "source": "Start Menu",
+                                }
+
+        local_progs = os.path.expanduser(r"~\AppData\Local\Programs")
+        if os.path.exists(local_progs):
+            for entry in os.listdir(local_progs):
+                full_p = os.path.join(local_progs, entry)
+                if os.path.isdir(full_p) and entry.lower() not in apps_map:
+                    apps_map[entry.lower()] = {
+                        "name": entry,
+                        "version": "",
+                        "publisher": "",
+                        "location": full_p,
+                        "source": "LocalAppData\\Programs",
+                    }
+
+        return sorted(apps_map.values(), key=lambda x: x["name"].lower())
+
+    # 7a. List all installed apps on the system
+    list_triggers = [
+        "all apps", "installed apps", "list apps", "what apps", "show apps",
+        "installed software", "installed programs", "apps present", "apps in my",
+        "apps on my", "software installed", "programs installed"
+    ]
+    if any(t in q for t in list_triggers):
+        apps = _collect_installed_windows_apps()
+        lines = [
+            f"### 🖥️ Installed Applications on Your PC ({len(apps)} Detected)\n",
+            "Scanned **Windows Registry**, **Start Menu**, and **User AppData (`Local\\Programs`)**:\n",
+            "| # | Application | Version | Source / Location |",
+            "| :--- | :--- | :--- | :--- |"
+        ]
+        for idx, app in enumerate(apps[:80], 1):
+            ver = app["version"] or "—"
+            loc = app["location"] or app["source"]
+            if len(loc) > 55:
+                loc = "..." + loc[-52:]
+            lines.append(f"| {idx} | **{app['name']}** | `{ver}` | `{loc}` |")
+        if len(apps) > 80:
+            lines.append(f"\n*Showing top 80 of {len(apps)} detected entries. Ask `Is <app name> installed?` to inspect any specific app.*")
+        return {
+            "response": "\n".join(lines),
+            "sources": [{"source": "Windows Registry & Start Menu Audit", "score": 1.0, "text": f"Discovered {len(apps)} installed applications"}]
+        }
+
+    # 7b. Generic "Is <app> installed?" / "Do I have <app>?" / "Check <app>"
+    import re, shutil, subprocess
+    app_query_patterns = [
+        r"(?:is|are)\s+(.+?)\s+(?:installed|present|available|on my pc|in my pc|on my system|in my system|on my laptop|on this pc)",
+        r"(?:do i have|have i got|check if|check whether|find if)\s+(.+?)(?:\s+installed|\s+in my|\s+on my|\?|$)",
+        r"(?:where is|check|locate|status of)\s+(.+?)(?:\s+installed|\s+on my|\s+in my|\?|$)",
+    ]
+    extracted_app = None
+    for pat in app_query_patterns:
+        m = re.search(pat, q)
+        if m:
+            candidate = m.group(1).strip(" ?!.,'\"")
+            # Ignore generic words or threat words
+            skip_words = {"it", "this", "that", "there", "anything", "everything", "threat", "threats", "malware", "virus", "cve"}
+            if candidate and candidate not in skip_words and len(candidate) >= 2:
+                extracted_app = candidate
+                break
+
+    if extracted_app and not any(tw in extracted_app for tw in ["cve-", "malware", "ransomware", "rootkit", "threat", "vulnerability"]):
+        # Clean trailing filler phrases
+        extracted_app = re.sub(r"\s+(?:in my pc|on my pc|in my system|on my system|installed|app|software)$", "", extracted_app).strip()
+        aliases = {
+            "vscode": "visual studio code",
+            "vs code": "visual studio code",
+            "chrome": "google chrome",
+            "edge": "microsoft edge",
+            "word": "microsoft office",
+            "excel": "microsoft office",
+            "powerpoint": "microsoft office",
+            "compass": "mongodb compass",
+            "intellij": "intellij idea",
+            "node": "node.js",
+            "nodejs": "node.js",
+            "wsl": "windows subsystem for linux",
+        }
+        search_term = aliases.get(extracted_app, extracted_app)
+        apps = _collect_installed_windows_apps()
+        matches = [a for a in apps if search_term in a["name"].lower() or extracted_app in a["name"].lower()]
+
+        # Also check CLI in PATH
+        cli_path = shutil.which(extracted_app.replace(" ", "")) or shutil.which(search_term.replace(" ", ""))
+
+        # Also check UWP / Microsoft Store apps if no desktop match yet
+        uwp_matches = []
+        if not matches and not cli_path:
+            try:
+                ps_cmd = f"Get-StartApps | Where-Object {{ $_.Name -like '*{extracted_app}*' -or $_.Name -like '*{search_term}*' }} | Select-Object -First 5 Name,AppID | ConvertTo-Json"
+                res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=5)
+                if res.stdout.strip():
+                    parsed = json.loads(res.stdout)
+                    if isinstance(parsed, dict):
+                        parsed = [parsed]
+                    uwp_matches = parsed
+            except Exception:
+                pass
+
+        # Check running processes
+        running_procs = []
+        try:
+            tl = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=3)
+            for line in tl.stdout.splitlines():
+                proc_name = line.split(",")[0].strip('"')
+                if extracted_app.replace(" ", "") in proc_name.lower() or search_term.split()[0] in proc_name.lower():
+                    if proc_name not in running_procs:
+                        running_procs.append(proc_name)
+        except Exception:
+            pass
+
+        if matches or cli_path or uwp_matches:
+            resp_lines = [f"### 🔍 Host Software Verification: `{extracted_app.title()}`\n"]
+            resp_lines.append(f"✅ **Yes, `{extracted_app}` is installed on your PC.**\n")
+            for m_app in matches[:5]:
+                ver_txt = f" (v`{m_app['version']}`)" if m_app["version"] else ""
+                pub_txt = f" | Publisher: `{m_app['publisher']}`" if m_app["publisher"] else ""
+                loc_txt = f" | Location: `{m_app['location']}`" if m_app["location"] else f" | Source: `{m_app['source']}`"
+                resp_lines.append(f"- **{m_app['name']}**{ver_txt}{pub_txt}{loc_txt}")
+            for u in uwp_matches[:5]:
+                resp_lines.append(f"- **{u.get('Name', extracted_app)}** (Microsoft Store / UWP App | AppID: `{u.get('AppID', '')}`)")
+            if cli_path:
+                resp_lines.append(f"- **CLI Executable in PATH:** `{cli_path}`")
+            if running_procs:
+                resp_lines.append(f"- **Process Status:** 🟢 **Currently Running** (`{', '.join(running_procs[:3])}`)")
+            else:
+                resp_lines.append("- **Process Status:** ⚪ **Installed (Not currently running)**")
+
+            return {
+                "response": "\n".join(resp_lines),
+                "sources": [{"source": "Universal Windows App & Process Inspector", "score": 1.0, "text": f"Matched {len(matches) + len(uwp_matches)} app(s) for '{extracted_app}'"}]
+            }
+        else:
+            resp = (
+                f"### 🔍 Host Software Verification: `{extracted_app.title()}`\n\n"
+                f"❌ **No, `{extracted_app}` was not found installed on your PC.**\n\n"
+                f"- Checked **Windows Registry** (`HKLM` & `HKCU` Uninstall keys — {len(apps)} entries)\n"
+                f"- Checked **Start Menu shortcuts** & **`AppData\\Local\\Programs`**\n"
+                f"- Checked **Microsoft Store (UWP) apps** & **System `PATH`**\n\n"
+                f"💡 *Tip: Try `List all installed apps` to see everything detected on your system.*"
+            )
+            return {
+                "response": resp,
+                "sources": [{"source": "Universal Windows App Inspector", "score": 1.0, "text": f"Searched {len(apps)} apps, UWP apps, and PATH for '{extracted_app}'"}]
+            }
 
     return None
 
