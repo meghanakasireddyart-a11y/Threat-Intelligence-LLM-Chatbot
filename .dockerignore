@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+*.bat
+*.ps1
+Threat_Intelligence_Assessment_Report.pdf
+generate_pdf_report.py
