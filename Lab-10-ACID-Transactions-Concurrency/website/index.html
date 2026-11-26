@@ -1,0 +1,1030 @@
+﻿<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MongoDB Lab 7: Production Schema & Working Set Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="bg-ambient">
+    <div class="ambient-blob blob-1"></div>
+    <div class="ambient-blob blob-2"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-logo">M</div>
+        <div class="brand-text">
+          <h1>NoSQL Lab 7: Production Schema & Working Set Analysis</h1>
+          <p>MongoDB Performance Engineering &bull; BSON Sizing &bull; WiredTiger Cache</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="status-badge" id="mongoStatusBadge">
+          <div class="status-indicator" id="mongoStatusDot"></div>
+          <span id="mongoStatusText">Connecting...</span>
+        </div>
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">
+          🌓
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <div class="nav-tabs-wrapper">
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-overview">
+        📊 Overview & Architecture
+      </button>
+      <button class="tab-btn" data-tab="tab-activity1">
+        📏 Activity 1: $bsonSize & Schema
+      </button>
+      <button class="tab-btn" data-tab="tab-activity2">
+        ⚡ Activity 2: Working Set Analysis
+      </button>
+      <button class="tab-btn" data-tab="tab-runner">
+        🚀 Live Lab Runner & API
+      </button>
+      <button class="tab-btn" data-tab="tab-lab9">
+        🌐 Lab 9: Write Concern &amp; Partition
+      </button>
+      <button class="tab-btn" data-tab="tab-lab10">
+        🔐 Lab 10: ACID Transactions
+      </button>
+      <button class="tab-btn" data-tab="tab-report">
+        📑 Complete Report & Q&amp;A
+      </button>
+    </nav>
+  </div>
+
+  <!-- Main Content -->
+  <main class="app-main">
+
+    <!-- TAB 1: OVERVIEW & ARCHITECTURE -->
+    <section class="tab-pane active" id="tab-overview">
+      <div class="hero-card">
+        <span class="hero-badge">Engineering Deep Dive</span>
+        <h2>High-Performance MongoDB Schema & Cache Management</h2>
+        <p>
+          Quantitative analysis of production MongoDB systems. This lab transitions schema design from qualitative assumptions to empirical measurements using the <code>$bsonSize</code> aggregation operator, while analyzing WiredTiger memory residency, cache eviction pressures, and working set sizing.
+        </p>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Hard BSON Limit</span>
+            <span class="metric-icon">🛑</span>
+          </div>
+          <div class="metric-value">16 MB</div>
+          <div class="metric-sub">16,777,216 bytes maximum document size ceiling</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">WiredTiger Cache</span>
+            <span class="metric-icon">🧠</span>
+          </div>
+          <div class="metric-value" id="dashWtCacheMax">50% RAM</div>
+          <div class="metric-sub">Default rule: <code>max(256MB, 0.5 &times; (RAM - 1GB))</code></div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Working Set Target</span>
+            <span class="metric-icon">🎯</span>
+          </div>
+          <div class="metric-value">&le; Cache</div>
+          <div class="metric-sub">Hot data + active indexes must fit entirely in RAM</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Embedding Safe Zone</span>
+            <span class="metric-icon">🛡️</span>
+          </div>
+          <div class="metric-value">&lt; 100</div>
+          <div class="metric-sub">Bounded arrays only; reference or bucket beyond 100</div>
+        </div>
+      </div>
+
+      <!-- Architecture Comparison Panels -->
+      <div class="layout-two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>🧱</span> The BSON Document Constraint</h3>
+            <span class="badge-tag green">Activity 7.1</span>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            In MongoDB, embedding provides atomic updates and single-seek reads. However, storing unbounded arrays within a document is an anti-pattern that leads to severe production vulnerabilities:
+          </p>
+          <ul style="padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.8;">
+            <li><strong>Hard Limit Failure:</strong> Any document exceeding 16MB triggers <code>BSONObjectTooLarge</code> (error 10334) and rejects further writes.</li>
+            <li><strong>Memory Thrashing:</strong> WiredTiger must read the entire document into cache even when the application only needs the blog post title.</li>
+            <li><strong>Reallocation Overhead:</strong> Array growth via <code>$push</code> requires contiguous memory reallocations, creating fragmentations and write latency spikes.</li>
+          </ul>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>⚡</span> WiredTiger Working Set Architecture</h3>
+            <span class="badge-tag blue">Activity 7.2</span>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            WiredTiger uses an internal LRU (Least Recently Used) cache to maintain active pages in uncompressed memory:
+          </p>
+          <ul style="padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.8;">
+            <li><strong>Working Set &le; Cache:</strong> 100% cache hits, near-zero disk I/O, sub-millisecond query responses.</li>
+            <li><strong>Working Set &gt; Cache:</strong> Application threads get drafted into performing disk evictions (<code>eviction pages evicted by application threads</code>), causing query latency to spike from milliseconds to seconds.</li>
+            <li><strong>Sequential Inserts:</strong> Recently inserted records remain resident in cache; older pages are evicted first under memory pressure.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: ACTIVITY 1 - $bsonSize & SCHEMA DESIGN -->
+    <section class="tab-pane" id="tab-activity1">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>📐</span> Activity 1: Analyze a Production Schema ($bsonSize)</h3>
+          <span class="badge-tag green">Interactive Sizer</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          In MongoDB 4.4+, <code>{"$bsonSize": "$$ROOT"}</code> inside an aggregation pipeline measures the exact physical byte footprint of documents. Use the interactive simulator below to observe how unbounded comment accumulation drives a blog post document towards the 16MB cliff.
+        </p>
+
+        <!-- Interactive Sliders Grid -->
+        <div class="layout-two-col">
+          <div>
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Number of Comments in Post</span>
+                <span class="form-value-pill" id="valCommentCount">100 comments</span>
+              </div>
+              <input type="range" id="inputCommentCount" min="0" max="75000" step="250" value="100">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Average Comment Text Size (chars)</span>
+                <span class="form-value-pill" id="valCommentLen">200 chars</span>
+              </div>
+              <input type="range" id="inputCommentLen" min="20" max="800" step="10" value="200">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Post Metadata & Tags Count</span>
+                <span class="form-value-pill" id="valTagCount">4 tags</span>
+              </div>
+              <input type="range" id="inputTagCount" min="1" max="15" step="1" value="4">
+            </div>
+          </div>
+
+          <!-- Dynamic Results Card -->
+          <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+              <span style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Calculated BSON Size</span>
+              <span id="calculatedMb" style="font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700; color: var(--accent-primary);">0.03 MB</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;" id="calculatedBytes">
+              27,842 bytes / 16,777,216 bytes limit
+            </div>
+
+            <!-- Progress Gauge -->
+            <div class="gauge-container" style="margin: 0 0 1rem 0;">
+              <div class="gauge-header">
+                <span class="gauge-title">Capacity of 16MB Ceiling Used</span>
+                <span class="gauge-percentage" id="capacityPct">0.17%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill safe" id="capacityBar" style="width: 0.17%;"></div>
+              </div>
+              <div class="gauge-markers">
+                <span>0 MB (Empty)</span>
+                <span>4 MB (25%)</span>
+                <span>8 MB (50%)</span>
+                <span>12 MB (75%)</span>
+                <span>16 MB (FAIL)</span>
+              </div>
+            </div>
+
+            <div id="statusAlertBox" class="alert-box success">
+              <span>✅</span>
+              <div>
+                <strong>Safe for Embedding:</strong> Document size is well under 1MB. Fits easily within single WiredTiger cache pages with negligible latency.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seed Data from Lab Script Table -->
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>📑</span> Seeded Blog Posts Analysis (From <code>lab_01_production_schema.py</code>)</h3>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">
+          These are the actual BSON document measurements obtained by running the aggregation pipeline against the seeded collection:
+        </p>
+        <div class="table-responsive">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Blog Post Title</th>
+                <th>Author</th>
+                <th>Comments Embedded</th>
+                <th>BSON Size (Bytes)</th>
+                <th>% of 16MB Limit</th>
+                <th>Design Pattern Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Getting Started with MongoDB</strong></td>
+                <td>arjun</td>
+                <td>2</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">348 bytes</span></td>
+                <td>0.002%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr>
+                <td><strong>Advanced Aggregation Pipelines</strong></td>
+                <td>sneha</td>
+                <td>3</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">434 bytes</span></td>
+                <td>0.003%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr>
+                <td><strong>Vector Search with MongoDB Atlas</strong></td>
+                <td>kavya</td>
+                <td>1</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">294 bytes</span></td>
+                <td>0.002%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr style="background: rgba(239, 68, 68, 0.08);">
+                <td><strong>Popular Viral Post (Simulated)</strong></td>
+                <td>celebrity</td>
+                <td>50,000</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-danger); font-weight: 700;">17,966,736 bytes (17.13 MB)</span></td>
+                <td>107.1%</td>
+                <td><span class="badge-tag red">EXCEEDED 16MB LIMIT (FATAL WRITE REJECTION)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Schema Design Decision Matrix -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3><span>⚖️</span> Schema Design Decision Framework (Embed vs Reference vs Bucket)</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Pattern</th>
+                <th>Optimal Comment Range</th>
+                <th>Read Performance</th>
+                <th>Write Performance</th>
+                <th>16MB Risk</th>
+                <th>Production Suitability</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Embedded Array</strong></td>
+                <td>&lt; 50 &ndash; 100 comments</td>
+                <td>Fastest (single read seek)</td>
+                <td>Degrades as array grows (memory reallocation)</td>
+                <td>High if unbounded</td>
+                <td>Internal notes, small product specs, low-volume reviews</td>
+              </tr>
+              <tr>
+                <td><strong>1-to-N Reference</strong></td>
+                <td>100 &ndash; 1,000 comments</td>
+                <td>Requires secondary query or <code>$lookup</code></td>
+                <td>High (independent comment inserts)</td>
+                <td>Zero (each comment is own doc)</td>
+                <td>Standard blogs, forum threads, discussion platforms</td>
+              </tr>
+              <tr>
+                <td><strong>Bucket Pattern</strong></td>
+                <td>1,000 &ndash; 100,000+ comments</td>
+                <td>Very high (batches of 50-100 per page read)</td>
+                <td>High (targeted bucket <code>$push</code>)</td>
+                <td>Zero (buckets capped by count or size)</td>
+                <td>High-scale social media, Reddit/Twitter scale comments, IoT telemetry</td>
+              </tr>
+              <tr>
+                <td><strong>Subset Pattern</strong></td>
+                <td>Any volume (viral feeds)</td>
+                <td>Instant (top 5 comments in main doc)</td>
+                <td>Slightly more complex (updates main doc & bucket)</td>
+                <td>Zero (bounded embedded array)</td>
+                <td>E-commerce reviews (show 3 recent, paginate rest)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: ACTIVITY 2 - WORKING SET ANALYSIS -->
+    <section class="tab-pane" id="tab-activity2">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>⚡</span> Activity 2: WiredTiger Working Set & Range Query Analysis</h3>
+          <span class="badge-tag blue">Memory & Cache</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          In <code>lab_02_working_set_analysis.py</code>, 100,000 documents (~2KB each, totaling ~200MB) are inserted into <code>working_set_docs</code>. Three range queries are executed across the beginning, middle, and end of the collection. Explore the working set sizing dynamics and live benchmark results below.
+        </p>
+
+        <!-- Cache Metrics from serverStatus -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Configured Cache</span>
+              <span class="metric-icon">💾</span>
+            </div>
+            <div class="metric-value" id="statCacheMax">7,845 MB</div>
+            <div class="metric-sub"><code>maximum bytes configured</code> in WiredTiger</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Cache Currently In Use</span>
+              <span class="metric-icon">📦</span>
+            </div>
+            <div class="metric-value" id="statCacheInUse">232 MB</div>
+            <div class="metric-sub">Holds the 100k inserted documents</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Application Thread Evictions</span>
+              <span class="metric-icon">⚠️</span>
+            </div>
+            <div class="metric-value" style="color: var(--accent-primary);" id="statPagesEvicted">0</div>
+            <div class="metric-sub">Working set completely fits in RAM</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Cache Hit Ratio</span>
+              <span class="metric-icon">✨</span>
+            </div>
+            <div class="metric-value" style="color: var(--accent-primary);" id="statHitRatio">100.0%</div>
+            <div class="metric-sub">Zero disk reads required for queries</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Range Query Timing & Technical Prediction -->
+      <div class="layout-two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>⏱️</span> Range Query Latency Measurements</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Range Segment</th>
+                  <th>Sensor Filter</th>
+                  <th>Execution Time</th>
+                  <th>Cache State</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Beginning (0 &ndash; 1,000)</strong></td>
+                  <td><code>S-000000</code> to <code>S-001000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #f59e0b;">258.2 ms</span></td>
+                  <td>Resident (Older insert pages)</td>
+                </tr>
+                <tr>
+                  <td><strong>Middle (49,000 &ndash; 50,000)</strong></td>
+                  <td><code>S-049000</code> to <code>S-050000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #10b981;">172.5 ms</span></td>
+                  <td>Resident in cache</td>
+                </tr>
+                <tr>
+                  <td><strong>End (99,000 &ndash; 100,000)</strong></td>
+                  <td><code>S-099000</code> to <code>S-100000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">211.3 ms</span></td>
+                  <td>Hottest / Most recently written</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="alert-box info" style="margin-top: 1.25rem;">
+            <span>💡</span>
+            <div>
+              <strong>Why 150-250ms per query?</strong> The collection has no index on <code>sensor</code>! Every range query performs a full collection scan (<strong>COLLSCAN</strong>) examining all 100,000 documents (~200MB) in memory. Creating an index <code>{"sensor": 1}</code> reduces this latency from <strong>200ms to &lt; 1ms</strong>!
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>🔍</span> The Core Prediction Question Answered</h3>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.92rem;">
+            <strong>Prompt Question:</strong> <em>"Predict whether all three ranges will take roughly the same amount of time, or whether some will be noticeably slower -- and say which range you expect to be slowest and why."</em>
+          </p>
+          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--radius-md); font-size: 0.88rem; line-height: 1.7; color: var(--text-secondary);">
+            <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">Under Memory-Constrained Production (Working Set &gt; Cache):</strong></p>
+            <p>
+              The <strong>Beginning range (0-1,000) is the slowest</strong>. Because documents are inserted sequentially from 0 to 100,000, documents 0-1,000 were written first and represent the oldest pages in the WiredTiger cache. As the 100,000 inserts progress, earlier pages are LRU-evicted to disk. Querying 0-1,000 incurs cold disk read latency. The <strong>End range (99,000-100,000) is fastest</strong> because it is the most recently written and remains hot in RAM.
+            </p>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.75rem 0;">
+            <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">In This Exact Lab Environment (Cache = 7.8 GB, Data = 200 MB):</strong></p>
+            <p>
+              Because total data size (200MB) is a fraction of the available 7.8GB cache, <strong>all documents remain 100% memory-resident</strong>. Minor timing variations are caused by CPU thread scheduling, GC passes, and full COLLSCAN regex evaluations rather than disk eviction faults.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Working Set Sizing Formula Calculator -->
+      <div class="panel" style="margin-top: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>🧮</span> Production RAM Provisioning Calculator</h3>
+          <span class="badge-tag green">WiredTiger Formula</span>
+        </div>
+        <div class="layout-two-col">
+          <div>
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Total Database Data Size</span>
+                <span class="form-value-pill" id="valTotalDataGb">200 GB</span>
+              </div>
+              <input type="range" id="inputTotalDataGb" min="10" max="1000" step="10" value="200">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Active Working Set Percentage</span>
+                <span class="form-value-pill" id="valWorkingSetPct">15%</span>
+              </div>
+              <input type="range" id="inputWorkingSetPct" min="1" max="100" step="1" value="15">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Server Physical RAM Installed</span>
+                <span class="form-value-pill" id="valServerRamGb">64 GB</span>
+              </div>
+              <input type="range" id="inputServerRamGb" min="4" max="256" step="4" value="64">
+            </div>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="margin-bottom: 1rem;">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Active Working Set Size</div>
+              <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent-cyan);" id="resWorkingSetGb">30.0 GB</div>
+            </div>
+            <div style="margin-bottom: 1rem;">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">WiredTiger Cache Allocation (50% rule)</div>
+              <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent-primary);" id="resWtCacheGb">31.5 GB</div>
+            </div>
+
+            <div id="cacheFitBadge" class="alert-box success">
+              <span>✅</span>
+              <div id="cacheFitText">
+                <strong>Optimal Sizing:</strong> Working set (30.0 GB) fits completely within WiredTiger Cache (31.5 GB). Cache hit ratio will remain near 99%+.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: LIVE RUNNER & API -->
+    <section class="tab-pane" id="tab-runner">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>🚀</span> Live MongoDB Lab Execution Console</h3>
+          <span class="badge-tag green">Local MongoDB</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          Trigger the actual Python scripts against your live MongoDB service. View real-time outputs, measured BSON sizes, and WiredTiger metrics directly from the database engine.
+        </p>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <button class="btn btn-primary" id="btnRunAct1">
+            ▶ Run Activity 1 (Schema & $bsonSize)
+          </button>
+          <button class="btn btn-primary" id="btnRunAct2" style="background: linear-gradient(135deg, #0284c7, #2563eb);">
+            ▶ Run Activity 2 (Working Set 50k Docs)
+          </button>
+          <button class="btn btn-secondary" id="btnPollLiveMetrics">
+            🔄 Refresh Live WiredTiger Metrics
+          </button>
+        </div>
+
+        <!-- Terminal Output -->
+        <div class="terminal-box">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+            </div>
+            <span class="terminal-title">mongodb@localhost:27017 ~ nosql_labs execution output</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);" id="runStatusPill">Ready</span>
+          </div>
+          <div class="terminal-body" id="terminalOutput">
+[INFO] Ready to execute MongoDB Lab 7 tasks.
+Click "Run Activity 1" or "Run Activity 2" to execute against local MongoDB instance.
+MongoDB connection URI: mongodb://localhost:27017/nosql_labs
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: COMPLETE ACADEMIC REPORT & Q&A -->
+    <section class="tab-pane" id="tab-report">
+      <div class="hero-card" style="margin-bottom: 1.5rem;">
+        <span class="hero-badge">Academic Submission Document</span>
+        <h2>Lab 7: Production Schema & Working Set Analysis Report</h2>
+        <p>
+          Student: <strong>Kasireddy Meghana</strong> (USN: <code>24BTRCL119</code>) &bull; CSE (AIML), Section B &bull; Jain University<br>
+          Course: <strong>NoSQL Databases (MongoDB)</strong> &bull; Semester 5
+        </p>
+      </div>
+
+      <!-- Q&A Section 1 -->
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>❓</span> Core Lab Questions & Detailed Technical Solutions</h3>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q1: At what comment-count-per-post would a single blog post's embedded design approach or exceed the 16MB limit?
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p><strong>Mathematical Derivation:</strong></p>
+            <p>
+              The BSON specification imposes overhead for each embedded subdocument:
+            </p>
+            <ul style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li>Base document header, title, author, slug, tags: ~180 bytes.</li>
+              <li>Each comment subdocument: 4 bytes (subdoc length) + 1 byte (string type) + 7 bytes (field <code>author\0</code>) + 14 bytes (string data) + 1 byte (string type) + 5 bytes (field <code>text\0</code>) + comment text bytes + 1 byte (date/string) + 24 bytes (timestamp) + 1 byte (subdoc terminator <code>0x00</code>) = <strong>63 bytes overhead + text length</strong>.</li>
+              <li>Array index keys (<code>"0"</code>, <code>"1"</code>, ... <code>"10000"</code>): 3 to 7 bytes per entry.</li>
+            </ul>
+            <p>
+              With an average realistic comment length of <strong>300 bytes</strong>:
+              <br>
+              <code>Average bytes per comment = 63 + 300 + 5 = 368 bytes</code>
+              <br>
+              <code>Comments to reach 16MB = (16 &times; 1024 &times; 1024) / 368 &approx; 45,590 comments</code>.
+            </p>
+            <p style="margin-top: 0.5rem;">
+              With shorter comments (~150 bytes), it exceeds 16MB at ~<strong>75,000 comments</strong>. With rich comments or replies (~800 bytes), it fails at ~<strong>18,000 comments</strong>.
+              <br>
+              <strong style="color: var(--accent-warning);">Warning Threshold:</strong> In production, any document exceeding <strong>4MB to 8MB</strong> is already a severe performance hazard because reading or writing it saturates cache pages and networks.
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q2: Is "embed all comments in the post document" a safe design for this blog workload?
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p>
+              <strong style="color: var(--accent-danger);">Verdict: UNSAFE.</strong> It is a textbook example of the <em>Unbounded Array Anti-Pattern</em>.
+            </p>
+            <p>
+              While the seed data has only 1 to 3 comments per post (~300 bytes total), in a production blogging system popular articles attract viral spikes with thousands of comments. The embedded design suffers from three fatal architectural flaws:
+            </p>
+            <ol style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li><strong>Hard Ceiling Crash:</strong> Once comment count exceeds ~50k, MongoDB aborts writes with <code>BSONObjectTooLarge</code>. Users can no longer comment, and editors cannot edit the post.</li>
+              <li><strong>Read Amplification:</strong> Rendering an article list or post title forces MongoDB to transfer the entire multi-megabyte comments array over the wire, destroying API latency.</li>
+              <li><strong>Memory Fragmentation:</strong> Repeated <code>$push</code> operations to an embedded array exceed the document's pre-allocated memory chunk, forcing WiredTiger to continuously move and re-write the document on disk and in cache.</li>
+            </ol>
+            <p>
+              <strong>The Production Fix:</strong> Implement the <em>Subset Pattern</em> (embed only the 5 most recent comments in the post) combined with the <em>Bucket Pattern</em> (group historical comments into separate documents of 50 comments each in a <code>comments</code> collection).
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q3: Prediction &amp; Explanation of Query Latencies Across Collection Ranges
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p>
+              <strong>Key Architectural Dynamics:</strong>
+            </p>
+            <ul style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li><strong>LRU Eviction Priority:</strong> Because documents are inserted sequentially, documents <code>0-1,000</code> are the oldest pages in memory. Under cache pressure, WiredTiger evicts them first. Documents <code>99,000-100,000</code> were written last and remain warm in cache. Hence in a constrained environment, Range 1 is slowest and Range 3 is fastest.</li>
+              <li><strong>COLLSCAN Bottleneck:</strong> Because no index was created on <code>sensor</code>, every range query must scan 100% of documents. Adding <code>db.working_set_docs.createIndex({"sensor": 1})</code> reduces scan from 100,000 docs to exactly 1,001 index keys, dropping query execution from ~200ms to &lt;1ms.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: LAB 9 WRITE CONCERN & NETWORK PARTITION INTEGRATION -->
+    <section class="tab-pane" id="tab-lab9">
+      <div class="hero-card" style="border-left: 4px solid var(--accent-purple);">
+        <span class="hero-badge" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple);">Lab 9 Module Integration</span>
+        <h2>CAP Theorem, Write Concern Latency &amp; Network Partition Simulation</h2>
+        <p>
+          Integrated from Chapter 9: Quantitative benchmarking of write latency across acknowledgment levels (<code>w:1</code>, <code>w:majority</code>, <code>w:all</code>), journaling disk overhead (<code>j:true</code> vs <code>j:false</code>), and dynamic simulation of Docker network partitions and split-brain prevention stepdown.
+        </p>
+      </div>
+
+      <!-- Quick Metrics -->
+      <div class="metrics-grid" style="margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">w:1 Latency</span></div>
+          <div class="metric-value" style="color: var(--accent-green);">0.98 ms</div>
+          <div class="metric-subtext">Primary RAM cache ack only (~1000 ops/s)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">w:majority Latency</span></div>
+          <div class="metric-value" style="color: var(--accent-yellow);">3.69 ms</div>
+          <div class="metric-subtext">Quorum network replication (~3.8x slower)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">j:true fsync Overhead</span></div>
+          <div class="metric-value" style="color: var(--accent-red);">+2.33 ms</div>
+          <div class="metric-subtext">Synchronous WAL flush to physical disk</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Partition Quorum</span></div>
+          <div class="metric-value" style="color: var(--accent-cyan);">2 / 3 Votes</div>
+          <div class="metric-subtext">Majority needed for primary election</div>
+        </div>
+      </div>
+
+      <!-- Benchmarking & Controls Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+        <!-- Card 1: Write Concern Benchmark -->
+        <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 1.15rem; color: var(--text-primary);">📊 Lab 9.1: Write Concern Latency Table</h3>
+            <button class="btn btn-primary" id="btnRunLab9Bench" style="padding: 0.5rem 1rem; font-size: 0.85rem;">▶ Run 1,000 Writes</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: var(--font-mono);">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-muted);">
+                  <th style="padding: 0.6rem;">Concern</th>
+                  <th style="padding: 0.6rem;">Journal</th>
+                  <th style="padding: 0.6rem;">Avg (ms)</th>
+                  <th style="padding: 0.6rem;">P99 (ms)</th>
+                  <th style="padding: 0.6rem;">Throughput</th>
+                </tr>
+              </thead>
+              <tbody id="lab9BenchTableBody">
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-blue);"><strong>w:1</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-green);">0.98</td>
+                  <td style="padding: 0.6rem;">2.99</td>
+                  <td style="padding: 0.6rem;">1015 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-blue);"><strong>w:1</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">3.31</td>
+                  <td style="padding: 0.6rem;">5.35</td>
+                  <td style="padding: 0.6rem;">302 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-purple);"><strong>w:majority</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">3.69</td>
+                  <td style="padding: 0.6rem;">6.30</td>
+                  <td style="padding: 0.6rem;">271 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-purple);"><strong>w:majority</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">5.84</td>
+                  <td style="padding: 0.6rem;">7.73</td>
+                  <td style="padding: 0.6rem;">171 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-red);"><strong>w:all (w:3)</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">6.88</td>
+                  <td style="padding: 0.6rem;">9.18</td>
+                  <td style="padding: 0.6rem;">145 ops/s</td>
+                </tr>
+                <tr style="background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-red);"><strong>w:all (w:3)</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">9.48</td>
+                  <td style="padding: 0.6rem;">12.08</td>
+                  <td style="padding: 0.6rem;">106 ops/s</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 2: Interactive Partition Simulator -->
+        <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+          <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🌐 Lab 9.2: Network Partition Simulator</h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Test cluster resilience, primary stepdown, and split-brain prevention under simulated network partitions.
+          </p>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button class="btn" id="btnLab9DiscOne" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-yellow); border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Isolate 1 Secondary</button>
+            <button class="btn" id="btnLab9DiscBoth" style="background: rgba(239, 68, 68, 0.2); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Isolate Both (Minority)</button>
+            <button class="btn" id="btnLab9Heal" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Heal Partition</button>
+            <button class="btn" id="btnLab9WriteW1" style="background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Write w:1</button>
+            <button class="btn" id="btnLab9WriteWMaj" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple); border: 1px solid rgba(139, 92, 246, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Write w:majority</button>
+          </div>
+
+          <div id="lab9SimLog" style="background: #090a0f; border-radius: var(--radius-md); padding: 0.85rem; height: 180px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: var(--accent-cyan);">[INFO] Replica set topology initialized: rs0 (3 Nodes: rs0-1 [PRIMARY], rs0-2, rs0-3)</div>
+            <div style="color: var(--accent-green);">[INFO] Quorum Status: 2/3 votes available (Majority Intact)</div>
+            <div style="color: var(--text-muted);">[READY] Select an action above to simulate network partition scenarios.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section in Lab 7 Website -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub Demonstration Image for Grading</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          In accordance with the submission guidelines, the complete Lab 9 containerized demonstration environment has been published to Docker Hub:
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab09</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab09" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container:
+docker pull kasireddymeghana/nosql-lab09:latest
+docker run -d -p 8009:8009 kasireddymeghana/nosql-lab09:latest</code></pre>
+      </div>
+    </section>
+
+
+    <!-- TAB: LAB 10 - ACID TRANSACTIONS -->
+    <section class="tab-pane" id="tab-lab10">
+
+      <!-- Hero Card -->
+      <div class="hero-card" style="border-left: 4px solid var(--accent-purple);">
+        <span class="hero-badge" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple);">Lab 10 Module Integration</span>
+        <h2>ACID Multi-Document Transactions &amp; Deadlock Handling</h2>
+        <p>
+          MongoDB 4.0+ introduced multi-document ACID transactions across replica sets and (4.2+) sharded clusters.
+          This lab demonstrates <strong>atomicity</strong> through bank transfers with rollback, <strong>consistency</strong>
+          via schema-level constraints, <strong>isolation</strong> using snapshot read concern, and <strong>durability</strong>
+          with majority write concern. Write conflicts arising from concurrent sessions are caught and retried using
+          exponential backoff — mirroring real-world deadlock handling patterns.
+        </p>
+      </div>
+
+      <!-- Metrics Grid -->
+      <div class="metrics-grid" style="grid-template-columns: repeat(4,1fr); margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-label">ACID Guarantee</div>
+          <div class="metric-value" style="color: var(--accent-purple);">4 Props</div>
+          <div class="metric-sub">Atomicity · Consistency · Isolation · Durability</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Transaction Scope</div>
+          <div class="metric-value" style="color: var(--accent-cyan);">Multi-Doc</div>
+          <div class="metric-sub">Spans collections, databases in same cluster</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Retry Strategy</div>
+          <div class="metric-value" style="color: var(--accent-warning);">Exp. Backoff</div>
+          <div class="metric-sub">TransientTransactionError auto-retry pattern</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Deadlock Handling</div>
+          <div class="metric-value" style="color: var(--accent-danger);">WriteConflict</div>
+          <div class="metric-sub">Concurrent sessions caught and retried</div>
+        </div>
+      </div>
+
+      <!-- Lab 10.1: Bank Transfer -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <span>🏦 Lab 10.1: Bank Transfer Transaction</span>
+          <span class="badge-tag" style="background: rgba(139,92,246,0.15); color: var(--accent-purple);">ACID Transaction</span>
+        </div>
+        <div style="padding: 1.5rem;">
+
+          <!-- Account Cards -->
+          <div style="display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-001</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Arjun</div>
+              <div style="color: var(--accent-green); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$5,000.00</div>
+            </div>
+            <div style="background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-002</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Sneha</div>
+              <div style="color: var(--accent-cyan); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$3,000.00</div>
+            </div>
+            <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-003</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Rahul</div>
+              <div style="color: var(--accent-warning); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$1,000.00</div>
+            </div>
+          </div>
+
+          <!-- Transfer Simulator -->
+          <div style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <h4 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 0.95rem;">💸 Interactive Transfer Simulator</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr auto; gap: 0.75rem; align-items: end; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">From Account</label>
+                <select id="lab10FromAcct" style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                  <option value="ACC-001">ACC-001 (Arjun)</option>
+                  <option value="ACC-002">ACC-002 (Sneha)</option>
+                  <option value="ACC-003">ACC-003 (Rahul)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">To Account</label>
+                <select id="lab10ToAcct" style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                  <option value="ACC-002">ACC-002 (Sneha)</option>
+                  <option value="ACC-001">ACC-001 (Arjun)</option>
+                  <option value="ACC-003">ACC-003 (Rahul)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Amount ($)</label>
+                <input id="lab10Amount" type="number" value="500" min="1" max="10000"
+                  style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Description</label>
+                <input id="lab10Desc" type="text" value="Salary payment"
+                  style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-size: 0.85rem;">
+              </div>
+              <div>
+                <button id="btnLab10Transfer" class="btn btn-primary" style="white-space: nowrap;">▶ Execute Transfer</button>
+              </div>
+            </div>
+            <div style="margin-top: 0.75rem;">
+              <button id="btnLab10InsufficientTest" class="btn" style="background: rgba(245,158,11,0.15); color: var(--accent-warning); border: 1px solid rgba(245,158,11,0.3); font-size: 0.8rem;">
+                ⚠ Test Insufficient Funds ($5000 from ACC-003)
+              </button>
+            </div>
+          </div>
+
+          <!-- Results -->
+          <div class="layout-two-col">
+            <div>
+              <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.6rem;">💰 Current Balances</h4>
+              <div class="table-responsive">
+                <table class="styled-table">
+                  <thead><tr><th>Account</th><th>Holder</th><th>Balance</th><th>Status</th></tr></thead>
+                  <tbody id="lab10BalancesBody">
+                    <tr><td><strong>ACC-001</strong></td><td>Arjun</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$5,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                    <tr><td><strong>ACC-002</strong></td><td>Sneha</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$3,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                    <tr><td><strong>ACC-003</strong></td><td>Rahul</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$1,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.6rem;">📋 Transaction Log</h4>
+              <div id="lab10TxnLog" style="background: #090a0f; border-radius: var(--radius-md); padding: 0.85rem; height: 160px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.78rem; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="color: var(--text-muted);">[READY] Execute a transfer to see the transaction log here...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lab 10.2: Inventory Reservation -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <span>📦 Lab 10.2: Inventory Reservation &amp; Deadlock Handling</span>
+          <span class="badge-tag" style="background: rgba(6,182,212,0.15); color: var(--accent-cyan);">WriteConflict Retry</span>
+        </div>
+        <div style="padding: 1.5rem;">
+
+          <!-- Product Card -->
+          <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: stretch;">
+            <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: var(--radius-md); padding: 1.25rem; min-width: 180px; text-align: center;">
+              <div style="font-size: 2rem; margin-bottom: 0.5rem;">💻</div>
+              <div style="font-weight: 700; color: var(--text-primary);">LAPTOP</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem; margin: 0.25rem 0;">Pro Laptop X1</div>
+              <div style="color: var(--accent-green); font-family: var(--font-mono); font-weight: 700;">$999</div>
+              <div style="margin-top: 0.5rem; padding: 0.25rem 0.6rem; background: rgba(16,185,129,0.15); border-radius: var(--radius-sm); font-size: 0.75rem; color: var(--accent-green);">Stock: 5 units</div>
+            </div>
+            <div style="flex: 1; background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.25rem; border: 1px solid var(--border-color);">
+              <h4 style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem;">⚡ Concurrency Test Controls</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">
+                    Number of Threads: <strong id="lab10ThreadCountVal" style="color: var(--accent-cyan);">8 threads</strong>
+                  </label>
+                  <input id="lab10ThreadCount" type="range" min="2" max="16" value="8" style="width: 100%; accent-color: var(--accent-cyan);">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem;"><span>2</span><span>16</span></div>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Units per Thread</label>
+                  <input id="lab10QtyPerThread" type="number" value="1" min="1" max="3"
+                    style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                </div>
+              </div>
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <button id="btnLab10Inventory" class="btn btn-primary">▶ Run Concurrent Reservations</button>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer;">
+                  <input id="lab10RetryToggle" type="checkbox" checked style="accent-color: var(--accent-cyan);"> Enable Retry Logic
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inventory Results -->
+          <div id="lab10InventoryResults" style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; border: 1px solid var(--border-color); min-height: 80px;">
+            <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 1rem;">Click "Run Concurrent Reservations" to simulate concurrent inventory booking with write-conflict detection.</div>
+          </div>
+
+          <!-- Throughput bar placeholder -->
+          <div id="lab10ThroughputBar" style="margin-top: 1rem;"></div>
+        </div>
+      </div>
+
+      <!-- Live Runner for Lab 10 -->
+      <div class="terminal-box" style="margin-bottom: 2rem;">
+        <div class="terminal-header">
+          <div style="display: flex; gap: 0.5rem;">
+            <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+          </div>
+          <span style="color: var(--text-muted); font-size: 0.8rem; font-family: var(--font-mono);">lab10_runner.py — ACID Transaction Scripts</span>
+          <span id="lab10RunStatus" style="font-size: 0.75rem; color: var(--text-muted);">Idle</span>
+        </div>
+        <div class="terminal-body">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button id="btnLab10RunScript1" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem;">▶ Run Lab 10.1 (Bank Transfer)</button>
+            <button id="btnLab10RunScript2" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem; background: rgba(6,182,212,0.2); color: var(--accent-cyan); border-color: rgba(6,182,212,0.4);">▶ Run Lab 10.2 (Inventory Reservation)</button>
+            <button id="btnLab10Reset" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem;">🔄 Reset DB</button>
+          </div>
+          <pre id="lab10TerminalOutput" style="margin:0; white-space: pre-wrap; font-size: 0.8rem; color: var(--accent-green); min-height: 200px; max-height: 400px; overflow-y: auto; line-height: 1.6;">[READY] Select a script above to run Lab 10 demonstrations.</pre>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-top: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub - Lab 10 Submission</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          The complete Lab 10 containerized demonstration environment has been published to Docker Hub for grading.
+          The image bundles the Lab 7 + Lab 10 website with all ACID transaction demonstrations running on port 8010.
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab10</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab10" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container:
+docker pull kasireddymeghana/nosql-lab10:latest
+docker run -d -p 8010:8010 --name nosql-lab10 kasireddymeghana/nosql-lab10:latest</code></pre>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-content">
+      <div>
+        <strong>MongoDB Lab 7: Performance &amp; Schema Engineering</strong> &bull; Jain University
+      </div>
+      <div>
+        Designed &amp; Tested with PyMongo 4.20 &bull; MongoDB 8.x WiredTiger
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

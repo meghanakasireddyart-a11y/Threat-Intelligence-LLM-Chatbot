@@ -1,0 +1,67 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd6c0688efe6e53f820f6e"
+    },
+    "title": "Demystifying MongoDB Document Modeling",
+    "author": "Dr. Priya Sharma",
+    "tags": [
+      "mongodb",
+      "nosql",
+      "architecture"
+    ],
+    "published_at": "2026-01-10T10:00:00Z"
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c0688efe6e53f820f6f"
+    },
+    "title": "Scaling Distributed Databases with Sharding",
+    "author": "Arjun Mehta",
+    "tags": [
+      "distributed-systems",
+      "sharding",
+      "scalability"
+    ],
+    "published_at": "2026-01-15T14:30:00Z"
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c0688efe6e53f820f70"
+    },
+    "title": "Building Real-time Pipelines with Change Streams",
+    "author": "Sneha Reddy",
+    "tags": [
+      "real-time",
+      "kafka",
+      "mongodb"
+    ],
+    "published_at": "2026-01-20T09:15:00Z"
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c0688efe6e53f820f71"
+    },
+    "title": "CAP Theorem Tradeoffs in Modern Cloud NoSQL",
+    "author": "Dr. Priya Sharma",
+    "tags": [
+      "cap-theorem",
+      "cloud",
+      "consistency"
+    ],
+    "published_at": "2026-01-25T11:45:00Z"
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c0688efe6e53f820f72"
+    },
+    "title": "Vector Search and Generative AI Integrations",
+    "author": "Vikram Singh",
+    "tags": [
+      "ai",
+      "vector-search",
+      "embeddings"
+    ],
+    "published_at": "2026-02-01T16:00:00Z"
+  }
+]

@@ -1,0 +1,110 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd66bea3c5c1fe8c9c51db"
+    },
+    "lab": "Activity 2.1 (Try It Yourself)",
+    "timestamp": "2026-11-18T14:20:06.671056",
+    "local_instance": {
+      "label": "Docker / Local MongoDB",
+      "uri": "mongodb://localhost:27017",
+      "connected": true,
+      "latency_ms": 41.57,
+      "version": "8.0.4",
+      "versionArray": [
+        8,
+        0,
+        4,
+        0
+      ],
+      "gitVersion": "bc35ab4305d9...",
+      "fullGitVersion": "bc35ab4305d9920d9d0491c1c9ef9b72383d31f9",
+      "platform": "Windows (Host Native)",
+      "bits": 64,
+      "maxBsonObjectSize": 16777216,
+      "storageEngines": [
+        "devnull",
+        "wiredTiger"
+      ],
+      "javascriptEngine": "mozjs",
+      "pid": "N/A",
+      "modules": [
+        "Community Edition"
+      ],
+      "ok": 1.0,
+      "topology": "Standalone Local Daemon (Port 27017)"
+    },
+    "atlas_instance": {
+      "label": "MongoDB Atlas / Cloud Target",
+      "uri": "mongodb://localhost:27018",
+      "connected": true,
+      "latency_ms": 35.63,
+      "version": "8.0.4",
+      "versionArray": [
+        8,
+        0,
+        4,
+        0
+      ],
+      "gitVersion": "bc35ab4305d9...",
+      "fullGitVersion": "bc35ab4305d9920d9d0491c1c9ef9b72383d31f9",
+      "platform": "Linux/Container",
+      "bits": 64,
+      "maxBsonObjectSize": 16777216,
+      "storageEngines": [
+        "devnull",
+        "wiredTiger"
+      ],
+      "javascriptEngine": "mozjs",
+      "pid": "N/A",
+      "modules": [
+        "Community Edition"
+      ],
+      "ok": 1.0,
+      "topology": "Standalone / Dedicated Instance"
+    },
+    "version_comparison": {
+      "Deployment Target": {
+        "local": "Standalone Local Daemon (Port 27017)",
+        "atlas": "Standalone / Dedicated Instance"
+      },
+      "MongoDB Version": {
+        "local": "8.0.4",
+        "atlas": "8.0.4"
+      },
+      "Git Commit Hash": {
+        "local": "bc35ab4305d9...",
+        "atlas": "bc35ab4305d9..."
+      },
+      "Host Platform / OS": {
+        "local": "Windows (Host Native)",
+        "atlas": "Linux/Container"
+      },
+      "Target Architecture": {
+        "local": "64-bit",
+        "atlas": "64-bit"
+      },
+      "Max BSON Size": {
+        "local": "16 MB",
+        "atlas": "16 MB"
+      },
+      "Storage Engines": {
+        "local": "devnull, wiredTiger",
+        "atlas": "devnull, wiredTiger"
+      },
+      "JavaScript Engine": {
+        "local": "mozjs",
+        "atlas": "mozjs"
+      },
+      "Modules / Edition": {
+        "local": "Community Edition",
+        "atlas": "Community Edition"
+      },
+      "Connection Latency": {
+        "local": "41.57 ms (Loopback)",
+        "atlas": "35.63 ms (Network/Cloud)"
+      }
+    },
+    "verdict": "Both instances operational with full command compatibility."
+  }
+]

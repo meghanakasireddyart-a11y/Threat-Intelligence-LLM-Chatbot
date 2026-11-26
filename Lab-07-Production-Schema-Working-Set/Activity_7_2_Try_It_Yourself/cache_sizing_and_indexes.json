@@ -1,0 +1,32 @@
+{
+  "lab": "Activity 7.2 Try It Yourself",
+  "collscan_ms": 218.72,
+  "ixscan_ms": 11.62,
+  "speedup_ratio": 18.8,
+  "sizing_cases": [
+    {
+      "db_size_gb": 50,
+      "ws_pct": 10,
+      "ws_gb": 5,
+      "min_ram_gb": 12
+    },
+    {
+      "db_size_gb": 200,
+      "ws_pct": 15,
+      "ws_gb": 30,
+      "min_ram_gb": 64
+    },
+    {
+      "db_size_gb": 1000,
+      "ws_pct": 5,
+      "ws_gb": 50,
+      "min_ram_gb": 104
+    },
+    {
+      "db_size_gb": 2000,
+      "ws_pct": 10,
+      "ws_gb": 200,
+      "min_ram_gb": 402
+    }
+  ]
+}

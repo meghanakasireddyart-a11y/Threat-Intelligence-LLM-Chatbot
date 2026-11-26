@@ -1,0 +1,131 @@
+{
+  "orders_with_customers": [
+    {
+      "_id": "6afd739de982f39f8c953728",
+      "order_id": "ORD-201",
+      "total": 350,
+      "customer_name": "Arjun",
+      "customer_tier": "Gold",
+      "city": "Bangalore"
+    },
+    {
+      "_id": "6afd739de982f39f8c953729",
+      "order_id": "ORD-202",
+      "total": 150,
+      "customer_name": "Sneha",
+      "customer_tier": "Silver",
+      "city": "Mumbai"
+    },
+    {
+      "_id": "6afd739de982f39f8c95372a",
+      "order_id": "ORD-203",
+      "total": 680,
+      "customer_name": "Rahul",
+      "customer_tier": "Platinum",
+      "city": "Delhi"
+    },
+    {
+      "_id": "6afd739de982f39f8c95372b",
+      "order_id": "ORD-204",
+      "total": 0,
+      "customer_name": "Arjun",
+      "customer_tier": "Gold",
+      "city": "Bangalore"
+    }
+  ],
+  "products_never_ordered": [
+    {
+      "product_id": "P006",
+      "name": "Sensor Pro F",
+      "category": "Smart Home",
+      "price": 420
+    }
+  ],
+  "order_line_items": [
+    {
+      "_id": "6afd739de982f39f8c953728",
+      "order_id": "ORD-201",
+      "product_id": "P001",
+      "product_name": "Widget A",
+      "product_price": 200
+    },
+    {
+      "_id": "6afd739de982f39f8c953728",
+      "order_id": "ORD-201",
+      "product_id": "P002",
+      "product_name": "Gadget B",
+      "product_price": 150
+    },
+    {
+      "_id": "6afd739de982f39f8c953729",
+      "order_id": "ORD-202",
+      "product_id": "P003",
+      "product_name": "Widget C",
+      "product_price": 150
+    },
+    {
+      "_id": "6afd739de982f39f8c95372a",
+      "order_id": "ORD-203",
+      "product_id": "P001",
+      "product_name": "Widget A",
+      "product_price": 200
+    },
+    {
+      "_id": "6afd739de982f39f8c95372a",
+      "order_id": "ORD-203",
+      "product_id": "P004",
+      "product_name": "Gadget D",
+      "product_price": 280
+    },
+    {
+      "_id": "6afd739de982f39f8c95372a",
+      "order_id": "ORD-203",
+      "product_id": "P005",
+      "product_name": "Widget E",
+      "product_price": 200
+    },
+    {
+      "_id": "6afd739de982f39f8c95372b",
+      "order_id": "ORD-204"
+    }
+  ],
+  "customer_spending_portfolio": [
+    {
+      "_id": "6afd739de982f39f8c95372e",
+      "customer_id": "C003",
+      "name": "Rahul",
+      "tier": "Platinum",
+      "city": "Delhi",
+      "order_count": 1,
+      "total_spent": 680,
+      "order_ids": [
+        "ORD-203"
+      ]
+    },
+    {
+      "_id": "6afd739de982f39f8c95372c",
+      "customer_id": "C001",
+      "name": "Arjun",
+      "tier": "Gold",
+      "city": "Bangalore",
+      "order_count": 2,
+      "total_spent": 350,
+      "order_ids": [
+        "ORD-201",
+        "ORD-204"
+      ]
+    },
+    {
+      "_id": "6afd739de982f39f8c95372d",
+      "customer_id": "C002",
+      "name": "Sneha",
+      "tier": "Silver",
+      "city": "Mumbai",
+      "order_count": 1,
+      "total_spent": 150,
+      "order_ids": [
+        "ORD-202"
+      ]
+    }
+  ]
+}

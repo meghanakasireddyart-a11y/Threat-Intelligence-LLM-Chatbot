@@ -1,0 +1,275 @@
+{
+  "test_1_wireless_substring": {
+    "pattern": "wireless",
+    "query": {
+      "name": {
+        "$regex": "wireless",
+        "$options": "i"
+      }
+    },
+    "count": 3,
+    "results": [
+      {
+        "sku": "MOU-001",
+        "name": "Ergonomic Optical Wireless Mouse",
+        "category": "Peripherals",
+        "price": 34.5,
+        "stock": 60,
+        "tags": [
+          "electronics",
+          "wireless"
+        ],
+        "rating": 4.4,
+        "is_active": true
+      },
+      {
+        "sku": "GAM-001",
+        "name": "Wireless Gamepad Controller",
+        "category": "Gaming",
+        "price": 39.99,
+        "stock": 55,
+        "tags": [
+          "electronics",
+          "wireless"
+        ],
+        "rating": 4.3,
+        "is_active": true
+      },
+      {
+        "sku": "AUD-001",
+        "name": "Wireless Noise-Canceling Earbuds",
+        "category": "Audio",
+        "price": 49.99,
+        "stock": 45,
+        "tags": [
+          "electronics",
+          "wireless",
+          "audio",
+          "premium"
+        ],
+        "rating": 4.7,
+        "is_active": true
+      }
+    ]
+  },
+  "test_2_case_insensitivity_usb": {
+    "pattern": "usb",
+    "query": {
+      "name": {
+        "$regex": "usb",
+        "$options": "i"
+      }
+    },
+    "count": 2,
+    "results": [
+      {
+        "sku": "ACC-002",
+        "name": "Aluminum Multiport USB-C Hub",
+        "category": "Accessories",
+        "price": 45.0,
+        "stock": 0,
+        "tags": [
+          "electronics",
+          "accessories"
+        ],
+        "rating": 4.2,
+        "is_active": false
+      },
+      {
+        "sku": "ACC-001",
+        "name": "Braided USB-C Fast Charging Cable",
+        "category": "Accessories",
+        "price": 14.99,
+        "stock": 120,
+        "tags": [
+          "accessories",
+          "cables"
+        ],
+        "rating": 4.5,
+        "is_active": true
+      }
+    ]
+  },
+  "test_3_prefix_anchor": {
+    "pattern": "^Ultra",
+    "query": {
+      "name": {
+        "$regex": "^Ultra",
+        "$options": "i"
+      }
+    },
+    "count": 1,
+    "results": [
+      {
+        "sku": "LAP-001",
+        "name": "UltraSlim Carbon Laptop 14-inch",
+        "category": "Computers",
+        "price": 1199.0,
+        "stock": 12,
+        "tags": [
+          "electronics",
+          "wireless",
+          "premium"
+        ],
+        "rating": 4.9,
+        "is_active": true
+      }
+    ]
+  },
+  "test_4_suffix_anchor": {
+    "pattern": "(Watch|Mousepad)$",
+    "query": {
+      "name": {
+        "$regex": "(Watch|Mousepad)$",
+        "$options": "i"
+      }
+    },
+    "count": 2,
+    "results": [
+      {
+        "sku": "ACC-003",
+        "name": "Memory Foam Ergonomic Mousepad",
+        "category": "Accessories",
+        "price": 19.99,
+        "stock": 90,
+        "tags": [
+          "accessories",
+          "ergonomic"
+        ],
+        "rating": 4.2,
+        "is_active": true
+      },
+      {
+        "sku": "WRB-001",
+        "name": "ProTrack GPS Smartwatch",
+        "category": "Wearables",
+        "price": 249.99,
+        "stock": 25,
+        "tags": [
+          "electronics",
+          "wireless",
+          "fitness",
+          "premium"
+        ],
+        "rating": 4.6,
+        "is_active": true
+      }
+    ]
+  },
+  "test_5_compound_search": {
+    "pattern": "wireless",
+    "query": {
+      "$and": [
+        {
+          "name": {
+            "$regex": "wireless",
+            "$options": "i"
+          }
+        },
+        {
+          "stock": {
+            "$gt": 0
+          }
+        },
+        {
+          "price": {
+            "$lte": 50.0
+          }
+        }
+      ]
+    },
+    "count": 3,
+    "results": [
+      {
+        "sku": "MOU-001",
+        "name": "Ergonomic Optical Wireless Mouse",
+        "category": "Peripherals",
+        "price": 34.5,
+        "stock": 60,
+        "tags": [
+          "electronics",
+          "wireless"
+        ],
+        "rating": 4.4,
+        "is_active": true
+      },
+      {
+        "sku": "GAM-001",
+        "name": "Wireless Gamepad Controller",
+        "category": "Gaming",
+        "price": 39.99,
+        "stock": 55,
+        "tags": [
+          "electronics",
+          "wireless"
+        ],
+        "rating": 4.3,
+        "is_active": true
+      },
+      {
+        "sku": "AUD-001",
+        "name": "Wireless Noise-Canceling Earbuds",
+        "category": "Audio",
+        "price": 49.99,
+        "stock": 45,
+        "tags": [
+          "electronics",
+          "wireless",
+          "audio",
+          "premium"
+        ],
+        "rating": 4.7,
+        "is_active": true
+      }
+    ]
+  },
+  "test_6_multi_field": {
+    "pattern": "gaming",
+    "query": {
+      "$or": [
+        {
+          "name": {
+            "$regex": "gaming",
+            "$options": "i"
+          }
+        },
+        {
+          "category": {
+            "$regex": "gaming",
+            "$options": "i"
+          }
+        }
+      ]
+    },
+    "count": 2,
+    "results": [
+      {
+        "sku": "KBD-001",
+        "name": "Mechanical RGB Gaming Keyboard",
+        "category": "Peripherals",
+        "price": 129.99,
+        "stock": 18,
+        "tags": [
+          "electronics",
+          "gaming",
+          "premium"
+        ],
+        "rating": 4.8,
+        "is_active": true
+      },
+      {
+        "sku": "GAM-001",
+        "name": "Wireless Gamepad Controller",
+        "category": "Gaming",
+        "price": 39.99,
+        "stock": 55,
+        "tags": [
+          "electronics",
+          "wireless"
+        ],
+        "rating": 4.3,
+        "is_active": true
+      }
+    ]
+  }
+}

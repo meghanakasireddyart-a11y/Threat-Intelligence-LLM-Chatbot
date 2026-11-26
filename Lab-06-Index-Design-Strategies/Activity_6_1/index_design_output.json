@@ -1,0 +1,119 @@
+{
+  "lab": "Lab 6.1 - Index Design for a Query Workload",
+  "student": "Kasireddy Meghana (USN: 24BTRCL119)",
+  "total_documents": 50000,
+  "before_indexes": [
+    {
+      "label": "ERROR logs from payment-svc",
+      "query": "{'level': 'ERROR', 'service': 'payment-svc'}",
+      "stage": "COLLSCAN",
+      "index": "COLLSCAN",
+      "totalDocsExamined": 50000,
+      "totalKeysExamined": 0,
+      "nReturned": 2509,
+      "executionTimeMillis": 83
+    },
+    {
+      "label": "All 404 responses",
+      "query": "{'status_code': 404}",
+      "stage": "COLLSCAN",
+      "index": "COLLSCAN",
+      "totalDocsExamined": 50000,
+      "totalKeysExamined": 0,
+      "nReturned": 5137,
+      "executionTimeMillis": 68
+    },
+    {
+      "label": "Slow API gateway requests",
+      "query": "{'service': 'api-gateway', 'response_time_ms': {'$gt': 3000}}",
+      "stage": "COLLSCAN",
+      "index": "COLLSCAN",
+      "totalDocsExamined": 50000,
+      "totalKeysExamined": 0,
+      "nReturned": 3919,
+      "executionTimeMillis": 74
+    }
+  ],
+  "after_indexes": [
+    {
+      "label": "ERROR logs from payment-svc",
+      "query": "{'level': 'ERROR', 'service': 'payment-svc'}",
+      "stage": "FETCH",
+      "index": "idx_level_service",
+      "totalDocsExamined": 2509,
+      "totalKeysExamined": 2509,
+      "nReturned": 2509,
+      "executionTimeMillis": 26
+    },
+    {
+      "label": "All 404 responses",
+      "query": "{'status_code': 404}",
+      "stage": "FETCH",
+      "index": "idx_status",
+      "totalDocsExamined": 5137,
+      "totalKeysExamined": 5137,
+      "nReturned": 5137,
+      "executionTimeMillis": 27
+    },
+    {
+      "label": "Slow API gateway requests",
+      "query": "{'service': 'api-gateway', 'response_time_ms': {'$gt': 3000}}",
+      "stage": "FETCH",
+      "index": "idx_service_latency",
+      "totalDocsExamined": 3919,
+      "totalKeysExamined": 3919,
+      "nReturned": 3919,
+      "executionTimeMillis": 24
+    }
+  ],
+  "prefix_tests": [
+    {
+      "label": "Filter on level alone (Prefix Match)",
+      "query": "{'level': 'ERROR'}",
+      "stage": "FETCH",
+      "index": "idx_level_service",
+      "totalDocsExamined": 12678,
+      "totalKeysExamined": 12678,
+      "nReturned": 12678,
+      "executionTimeMillis": 60
+    },
+    {
+      "label": "Filter on service alone (Matches idx_service_latency prefix)",
+      "query": "{'service': 'notification-svc'}",
+      "stage": "FETCH",
+      "index": "idx_service_latency",
+      "totalDocsExamined": 10018,
+      "totalKeysExamined": 10018,
+      "nReturned": 10018,
+      "executionTimeMillis": 62
+    }
+  ],
+  "indexes": [
+    {
+      "name": "_id_",
+      "keys": {
+        "_id": 1
+      }
+    },
+    {
+      "name": "idx_level_service",
+      "keys": {
+        "level": 1,
+        "service": 1
+      }
+    },
+    {
+      "name": "idx_service_latency",
+      "keys": {
+        "service": 1,
+        "response_time_ms": -1
+      }
+    },
+    {
+      "name": "idx_status",
+      "keys": {
+        "status_code": 1
+      }
+    }
+  ]
+}

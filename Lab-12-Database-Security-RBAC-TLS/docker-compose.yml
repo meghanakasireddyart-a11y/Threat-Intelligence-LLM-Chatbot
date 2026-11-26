@@ -1,0 +1,43 @@
+version: '3.8'
+
+# ==============================================================================
+# Docker Compose for NoSQL Lab 12 Demonstration
+# Student: Kasireddy Meghana (24BTRCL119)
+# Course: NoSQL Databases Using MongoDB
+# Services:
+#   1. mongodb-secure: MongoDB 7.0 container configured with authentication
+#   2. lab12-web: Interactive Lab 12 Security Platform on port 8012
+# ==============================================================================
+
+services:
+  mongodb-secure:
+    image: mongo:7.0
+    container_name: mongodb-secure-lab12
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: AdminPass123!
+      MONGO_INITDB_DATABASE: admin
+    ports:
+      - "27017:27017"
+    command: ["--auth", "--bind_ip_all"]
+    volumes:
+      - mongo-secure-data:/data/db
+
+  lab12-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kasireddymeghana/nosql-lab12:latest
+    container_name: nosql-lab12-web
+    restart: always
+    ports:
+      - "8012:8012"
+    environment:
+      - PORT=8012
+      - MONGO_URI=mongodb://admin:AdminPass123!@mongodb-secure:27017/nosql_labs?authSource=admin
+    depends_on:
+      - mongodb-secure
+
+volumes:
+  mongo-secure-data:

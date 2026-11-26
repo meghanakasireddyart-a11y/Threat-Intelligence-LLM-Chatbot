@@ -1,0 +1,163 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242de9"
+    },
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "year": 2008,
+    "genre": "Software Engineering",
+    "price": 43.989000000000004,
+    "isbn": "978-0132350884",
+    "tags": [
+      "programming",
+      "clean-code",
+      "refactoring"
+    ],
+    "publisher": {
+      "name": "Prentice Hall",
+      "location": "Upper Saddle River"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242dea"
+    },
+    "title": "Design Patterns: Elements of Reusable OOD",
+    "author": "Erich Gamma, Richard Helm, Ralph Johnson, John Vlissides",
+    "year": 1994,
+    "genre": "Software Architecture",
+    "price": 60.489000000000004,
+    "isbn": "978-0201633610",
+    "tags": [
+      "patterns",
+      "architecture",
+      "oop"
+    ],
+    "publisher": {
+      "name": "Addison-Wesley",
+      "location": "Boston"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242deb"
+    },
+    "title": "Refactoring: Improving the Design of Existing Code",
+    "author": "Martin Fowler",
+    "year": 1999,
+    "genre": "Software Engineering",
+    "price": 52.25000000000001,
+    "isbn": "978-0201485677",
+    "tags": [
+      "refactoring",
+      "clean-code",
+      "design"
+    ],
+    "publisher": {
+      "name": "Addison-Wesley",
+      "location": "Boston"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242dec"
+    },
+    "title": "Introduction to Algorithms (CLRS 3rd Ed)",
+    "author": "Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, Clifford Stein",
+    "year": 2009,
+    "genre": "Computer Science Theory",
+    "price": 97.9,
+    "isbn": "978-0262033848",
+    "tags": [
+      "algorithms",
+      "data-structures",
+      "theory"
+    ],
+    "publisher": {
+      "name": "MIT Press",
+      "location": "Cambridge"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242ded"
+    },
+    "title": "The Pragmatic Programmer (20th Anniv Ed)",
+    "author": "David Thomas & Andrew Hunt",
+    "year": 2019,
+    "genre": "Software Engineering",
+    "price": 49.99,
+    "isbn": "978-0135957059",
+    "tags": [
+      "programming",
+      "career",
+      "best-practices"
+    ],
+    "publisher": {
+      "name": "Addison-Wesley",
+      "location": "Boston"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242dee"
+    },
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "year": 2017,
+    "genre": "Databases",
+    "price": 45.99,
+    "isbn": "978-1449373320",
+    "tags": [
+      "databases",
+      "distributed-systems",
+      "architecture"
+    ],
+    "publisher": {
+      "name": "O'Reilly Media",
+      "location": "Sebastopol"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242def"
+    },
+    "title": "Deep Learning",
+    "author": "Ian Goodfellow, Yoshua Bengio, Aaron Courville",
+    "year": 2016,
+    "genre": "Machine Learning",
+    "price": 72.0,
+    "isbn": "978-0262035613",
+    "tags": [
+      "AI",
+      "neural-networks",
+      "theory"
+    ],
+    "publisher": {
+      "name": "MIT Press",
+      "location": "Cambridge"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "6afd66c166780ee7d7242df0"
+    },
+    "title": "Hands-On Machine Learning",
+    "author": "Aurelien Geron",
+    "year": 2022,
+    "genre": "Machine Learning",
+    "price": 59.99,
+    "isbn": "978-1098125974",
+    "tags": [
+      "AI",
+      "scikit-learn",
+      "tensorflow",
+      "practical"
+    ],
+    "publisher": {
+      "name": "O'Reilly Media",
+      "location": "Sebastopol"
+    }
+  }
+]

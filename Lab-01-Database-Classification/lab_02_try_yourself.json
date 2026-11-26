@@ -1,0 +1,122 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448ce"
+    },
+    "app": "Global E-Commerce",
+    "domain": "product_catalog",
+    "description": "Multi-category product catalog with polymorphic attributes (electronics, clothing, grocery)",
+    "read_write_pattern": "Heavy read (cached), periodic seller updates, dynamic schema",
+    "recommended_family": "Document",
+    "recommended_db": "MongoDB",
+    "rationale": "Flexible JSON/BSON schema accommodates arbitrary product attributes without sparse tables or ALTER TABLE migrations"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448cf"
+    },
+    "app": "Global E-Commerce",
+    "domain": "shopping_cart_sessions",
+    "description": "Transient active user shopping carts, temporary reservations, and authentication tokens",
+    "read_write_pattern": "Extreme read/write rate, sub-millisecond SLA, TTL auto-expiry",
+    "recommended_family": "Key-Value",
+    "recommended_db": "Redis",
+    "rationale": "In-memory key lookup delivers sub-millisecond response times with native TTL key expiration for abandoned carts"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d0"
+    },
+    "app": "Global E-Commerce",
+    "domain": "checkout_order_ledger",
+    "description": "Completed customer orders, payment receipts, invoice history, and settlement records",
+    "read_write_pattern": "Write-once, strong consistency required, multi-document ACID transactions",
+    "recommended_family": "Document",
+    "recommended_db": "MongoDB (ACID Transactions)",
+    "rationale": "Multi-document distributed transactions guarantee financial atomicity; rich document structure preserves order snapshot"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d1"
+    },
+    "app": "Global E-Commerce",
+    "domain": "recommendation_social_graph",
+    "description": "Collaborative filtering, 'Frequently Bought Together' item associations, and influencer graphs",
+    "read_write_pattern": "Multi-hop graph traversal, path finding, relationship queries",
+    "recommended_family": "Graph",
+    "recommended_db": "Neo4j",
+    "rationale": "Index-free adjacency traverses multi-hop item and user relationships exponentially faster than relational SQL joins"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d2"
+    },
+    "app": "Global E-Commerce",
+    "domain": "clickstream_event_logging",
+    "description": "User clicks, impressions, scrolling events, and hover tracking across millions of concurrent users",
+    "read_write_pattern": "Massive write-heavy append-only ingestion, partitioned time-series queries",
+    "recommended_family": "Wide-Column",
+    "recommended_db": "Apache Cassandra",
+    "rationale": "LSM-tree storage engine provides linearly scalable write throughput with zero single point of failure"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d3"
+    },
+    "app": "Global E-Commerce",
+    "domain": "product_search_and_discovery",
+    "description": "Tokenized text search, fuzzy spell-correction, and faceted price/brand filtering",
+    "read_write_pattern": "Read-heavy search queries, asynchronous catalog re-indexing",
+    "recommended_family": "Search / Inverted Index",
+    "recommended_db": "Elasticsearch / Atlas Search",
+    "rationale": "Inverted index enables tokenized relevance scoring, n-gram fuzzy matching, and instant faceted counts"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d4"
+    },
+    "app": "Smart Healthcare & Telemetry",
+    "domain": "patient_health_records",
+    "description": "Longitudinal patient clinical charts, physician encounter notes, and lab diagnostic histories",
+    "read_write_pattern": "Read-heavy clinical view, occasional updates, complex nested records",
+    "recommended_family": "Document",
+    "recommended_db": "MongoDB",
+    "rationale": "Hierarchical document structure maps naturally to FHIR / HL7 clinical standards and nested medical reports"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d5"
+    },
+    "app": "Smart Healthcare & Telemetry",
+    "domain": "vital_signs_iot_telemetry",
+    "description": "High-frequency streaming telemetry from ICU monitors, ECG patches, and pulse oximeters",
+    "read_write_pattern": "Extreme append-only time-series stream, time-window aggregations",
+    "recommended_family": "Wide-Column / Time-Series",
+    "recommended_db": "Apache Cassandra / InfluxDB",
+    "rationale": "Optimized time-partitioned storage compresses telemetry streams and handles millions of data points per second"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d6"
+    },
+    "app": "Smart Healthcare & Telemetry",
+    "domain": "emergency_alert_cache",
+    "description": "Real-time clinician paging queues, critical arrhythmia notifications, and alert state machines",
+    "read_write_pattern": "Sub-millisecond pub/sub, immediate in-memory deduplication and dispatch",
+    "recommended_family": "Key-Value",
+    "recommended_db": "Redis",
+    "rationale": "Built-in Pub/Sub channels and in-memory speed ensure instantaneous routing of life-critical alerts"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e3cb9dfee60aee448d7"
+    },
+    "app": "Smart Healthcare & Telemetry",
+    "domain": "epidemiological_contact_tracing",
+    "description": "Infectious disease transmission modeling, patient contact exposure chains, and hospital outbreak vectors",
+    "read_write_pattern": "Deep multi-hop relationship traversals, cluster and community detection",
+    "recommended_family": "Graph",
+    "recommended_db": "Neo4j",
+    "rationale": "Graph algorithms (shortest path, community detection) isolate infection clusters and track patient exposure paths"
+  }
+]

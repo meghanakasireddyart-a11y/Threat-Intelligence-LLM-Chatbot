@@ -1,0 +1,168 @@
+{
+  "regional_revenue": [
+    {
+      "_id": "East",
+      "total_revenue": 9100,
+      "order_count": 2,
+      "avg_spend": 4550.0,
+      "total_items": 11
+    },
+    {
+      "_id": "North",
+      "total_revenue": 8400,
+      "order_count": 4,
+      "avg_spend": 2100.0,
+      "total_items": 11
+    },
+    {
+      "_id": "South",
+      "total_revenue": 6750,
+      "order_count": 3,
+      "avg_spend": 2250.0,
+      "total_items": 8
+    },
+    {
+      "_id": "West",
+      "total_revenue": 5600,
+      "order_count": 1,
+      "avg_spend": 5600.0,
+      "total_items": 8
+    }
+  ],
+  "customer_tier_segmentation": [
+    {
+      "_id": "Arjun",
+      "total_spent": 6900,
+      "order_count": 3,
+      "customer": "Arjun",
+      "tier": "VIP Platinum"
+    },
+    {
+      "_id": "Manish",
+      "total_spent": 6200,
+      "order_count": 1,
+      "customer": "Manish",
+      "tier": "VIP Platinum"
+    },
+    {
+      "_id": "Sneha",
+      "total_spent": 5900,
+      "order_count": 2,
+      "customer": "Sneha",
+      "tier": "Gold Member"
+    },
+    {
+      "_id": "Rahul",
+      "total_spent": 5600,
+      "order_count": 1,
+      "customer": "Rahul",
+      "tier": "Gold Member"
+    },
+    {
+      "_id": "Kavya",
+      "total_spent": 2900,
+      "order_count": 1,
+      "customer": "Kavya",
+      "tier": "Standard Silver"
+    },
+    {
+      "_id": "Divya",
+      "total_spent": 1500,
+      "order_count": 1,
+      "customer": "Divya",
+      "tier": "Standard Silver"
+    },
+    {
+      "_id": "Pooja",
+      "total_spent": 850,
+      "order_count": 1,
+      "customer": "Pooja",
+      "tier": "Standard Silver"
+    }
+  ],
+  "statistical_metrics": [
+    {
+      "_id": "Electronics",
+      "count": 4,
+      "min_order": 2500,
+      "max_order": 6200,
+      "category": "Electronics",
+      "avg_order": 3700.0,
+      "std_dev": 1464.58
+    },
+    {
+      "_id": "Apparel",
+      "count": 3,
+      "min_order": 1500,
+      "max_order": 4100,
+      "category": "Apparel",
+      "avg_order": 2466.67,
+      "std_dev": 1161.42
+    },
+    {
+      "_id": "Books",
+      "count": 2,
+      "min_order": 850,
+      "max_order": 1200,
+      "category": "Books",
+      "avg_order": 1025.0,
+      "std_dev": 175.0
+    },
+    {
+      "_id": "Appliances",
+      "count": 1,
+      "min_order": 5600,
+      "max_order": 5600,
+      "category": "Appliances",
+      "avg_order": 5600.0,
+      "std_dev": 0.0
+    }
+  ],
+  "discounted_orders": [
+    {
+      "_id": "6afd739c2afe7de875e4bb2f",
+      "order_id": "ORD-111",
+      "customer": "Manish",
+      "total": 6200,
+      "category": "Electronics",
+      "discount_pct": 15.0,
+      "net_total": 5270.0
+    },
+    {
+      "_id": "6afd739c2afe7de875e4bb29",
+      "order_id": "ORD-105",
+      "customer": "Rahul",
+      "total": 5600,
+      "category": "Appliances",
+      "discount_pct": 15.0,
+      "net_total": 4760.0
+    },
+    {
+      "_id": "6afd739c2afe7de875e4bb2b",
+      "order_id": "ORD-107",
+      "customer": "Sneha",
+      "total": 4100,
+      "category": "Apparel",
+      "discount_pct": 8.0,
+      "net_total": 3772.0
+    },
+    {
+      "_id": "6afd739c2afe7de875e4bb27",
+      "order_id": "ORD-103",
+      "customer": "Arjun",
+      "total": 3200,
+      "category": "Electronics",
+      "discount_pct": 8.0,
+      "net_total": 2944.0
+    },
+    {
+      "_id": "6afd739c2afe7de875e4bb2c",
+      "order_id": "ORD-108",
+      "customer": "Kavya",
+      "total": 2900,
+      "category": "Electronics",
+      "discount_pct": 8.0,
+      "net_total": 2668.0
+    }
+  ]
+}

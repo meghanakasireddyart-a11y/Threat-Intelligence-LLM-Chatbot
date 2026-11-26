@@ -1,0 +1,110 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd6bfbae097c75b9550e88"
+    },
+    "title": "Machine Learning Foundations",
+    "code": "CS401",
+    "instructor": "Dr. Priya Sharma",
+    "credits": 4,
+    "schedule": {
+      "days": [
+        "Monday",
+        "Wednesday"
+      ],
+      "times": "10:00-11:30",
+      "room": "Lecture Hall 201"
+    },
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": "A"
+      },
+      {
+        "student_id": "STU102",
+        "name": "Sneha Reddy",
+        "grade": "B+"
+      },
+      {
+        "student_id": "STU103",
+        "name": "Rahul Kumar",
+        "grade": "A-"
+      },
+      {
+        "student_id": "STU104",
+        "name": "Divya Patel",
+        "grade": "B"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6bfbae097c75b9550e89"
+    },
+    "title": "Distributed Cloud Systems",
+    "code": "CS402",
+    "instructor": "Dr. Anil Gupta",
+    "credits": 3,
+    "schedule": {
+      "days": [
+        "Tuesday",
+        "Thursday"
+      ],
+      "times": "14:00-15:30",
+      "room": "Room 305"
+    },
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": null
+      },
+      {
+        "student_id": "STU105",
+        "name": "Kavya Nair",
+        "grade": "A"
+      },
+      {
+        "student_id": "STU106",
+        "name": "Vikram Singh",
+        "grade": "A+"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6bfbae097c75b9550e8a"
+    },
+    "title": "Natural Language Processing",
+    "code": "CS403",
+    "instructor": "Dr. Priya Sharma",
+    "credits": 3,
+    "schedule": {
+      "days": [
+        "Monday",
+        "Wednesday",
+        "Friday"
+      ],
+      "times": "09:00-10:00",
+      "room": "Lecture Hall 102"
+    },
+    "enrolled_students": [
+      {
+        "student_id": "STU102",
+        "name": "Sneha Reddy",
+        "grade": "B+"
+      },
+      {
+        "student_id": "STU103",
+        "name": "Rahul Kumar",
+        "grade": null
+      },
+      {
+        "student_id": "STU107",
+        "name": "Neha Gupta",
+        "grade": "A"
+      }
+    ]
+  }
+]

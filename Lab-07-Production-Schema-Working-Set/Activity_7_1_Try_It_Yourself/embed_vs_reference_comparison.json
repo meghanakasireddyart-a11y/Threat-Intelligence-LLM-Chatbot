@@ -1,0 +1,20 @@
+{
+  "benchmark": "Activity 7.1 Try It Yourself",
+  "comments_per_post": 500,
+  "metrics": {
+    "embedded": {
+      "doc_size_bytes": 62885,
+      "avg_read_ms": 0.983,
+      "avg_write_push_ms": 1.297
+    },
+    "referenced": {
+      "post_doc_size_bytes": 108,
+      "avg_read_lookup_ms": 4.437,
+      "avg_write_insert_ms": 0.583
+    },
+    "bucket_pattern": {
+      "bucket_doc_size_bytes": 5810,
+      "avg_read_page1_ms": 0.793
+    }
+  }
+}

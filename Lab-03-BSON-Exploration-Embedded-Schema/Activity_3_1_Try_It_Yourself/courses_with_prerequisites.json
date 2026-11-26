@@ -1,0 +1,153 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd6c04e51ee32ad923dcfd"
+    },
+    "title": "Introduction to Programming",
+    "code": "CS101",
+    "instructor": "Dr. Alan Turing",
+    "credits": 4,
+    "schedule": {
+      "days": [
+        "Monday",
+        "Wednesday"
+      ],
+      "times": "08:30-10:00",
+      "room": "LH-101"
+    },
+    "prerequisites": [],
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": "A"
+      },
+      {
+        "student_id": "STU105",
+        "name": "Kavya Nair",
+        "grade": "A"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c04e51ee32ad923dcfe"
+    },
+    "title": "Discrete Mathematics",
+    "code": "MATH101",
+    "instructor": "Dr. John von Neumann",
+    "credits": 3,
+    "schedule": {
+      "days": [
+        "Tuesday",
+        "Thursday"
+      ],
+      "times": "10:00-11:30",
+      "room": "LH-105"
+    },
+    "prerequisites": [],
+    "enrolled_students": [
+      {
+        "student_id": "STU102",
+        "name": "Sneha Reddy",
+        "grade": "A-"
+      },
+      {
+        "student_id": "STU103",
+        "name": "Rahul Kumar",
+        "grade": "B+"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c04e51ee32ad923dcff"
+    },
+    "title": "Data Structures and Algorithms",
+    "code": "CS201",
+    "instructor": "Dr. Donald Knuth",
+    "credits": 4,
+    "schedule": {
+      "days": [
+        "Monday",
+        "Wednesday"
+      ],
+      "times": "11:30-13:00",
+      "room": "LH-201"
+    },
+    "prerequisites": [
+      "CS101"
+    ],
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": "A"
+      },
+      {
+        "student_id": "STU103",
+        "name": "Rahul Kumar",
+        "grade": "A-"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c04e51ee32ad923dd00"
+    },
+    "title": "Machine Learning Foundations",
+    "code": "CS401",
+    "instructor": "Dr. Priya Sharma",
+    "credits": 4,
+    "schedule": {
+      "days": [
+        "Monday",
+        "Wednesday"
+      ],
+      "times": "14:00-15:30",
+      "room": "LH-202"
+    },
+    "prerequisites": [
+      "CS201",
+      "MATH101"
+    ],
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": "A"
+      },
+      {
+        "student_id": "STU102",
+        "name": "Sneha Reddy",
+        "grade": "B+"
+      }
+    ]
+  },
+  {
+    "_id": {
+      "$oid": "6afd6c04e51ee32ad923dd01"
+    },
+    "title": "Deep Reinforcement Learning",
+    "code": "CS501",
+    "instructor": "Dr. Geoffrey Hinton",
+    "credits": 4,
+    "schedule": {
+      "days": [
+        "Friday"
+      ],
+      "times": "09:00-12:00",
+      "room": "LH-301"
+    },
+    "prerequisites": [
+      "CS401"
+    ],
+    "enrolled_students": [
+      {
+        "student_id": "STU101",
+        "name": "Arjun Mehta",
+        "grade": null
+      }
+    ]
+  }
+]

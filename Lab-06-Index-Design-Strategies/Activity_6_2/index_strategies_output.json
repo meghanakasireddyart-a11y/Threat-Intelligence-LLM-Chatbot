@@ -1,0 +1,48 @@
+{
+  "lab": "Lab 6.2 - Compare Index Strategies",
+  "student": "Kasireddy Meghana (USN: 24BTRCL119)",
+  "predictions": {
+    "write_overhead": "Closer to 100% (High penalty due to B-tree write amplification across 5 indexes)",
+    "covered_query_speedup": "Closer to 1.5x (Modest gain in RAM when working set fits cache; document fetch is fast memory pointer)"
+  },
+  "insert_benchmark": {
+    "zero_indexes": {
+      "elapsed_sec": 0.08157819998450577,
+      "rate_docs_per_sec": 122581.76819173884
+    },
+    "five_indexes": {
+      "elapsed_sec": 0.33394939987920225,
+      "rate_docs_per_sec": 29944.65629708347
+    },
+    "overhead_percent": 309.36
+  },
+  "read_benchmark": {
+    "non_covered": {
+      "elapsed_sec": 0.7195273998659104,
+      "per_query_ms": 0.7195273998659104
+    },
+    "covered": {
+      "elapsed_sec": 0.6283601000905037,
+      "per_query_ms": 0.6283601000905037
+    },
+    "speedup_factor": 1.15
+  },
+  "explain_analysis": {
+    "non_covered": {
+      "stage": "FETCH",
+      "docs_examined": 1,
+      "keys_examined": 1
+    },
+    "covered": {
+      "stage": "PROJECTION_COVERED",
+      "docs_examined": 0,
+      "keys_examined": 1
+    }
+  },
+  "esr_rule_analysis": {
+    "query": "{status: 'active', sensor_id: /^SENSOR-0/} .sort({reading: -1})",
+    "good_index": "{status: 1, sensor_id: 1, reading: -1}",
+    "bad_index": "{reading: -1, status: 1, sensor_id: 1}",
+    "explanation": "Equality fields must precede Sort fields to allow index tree navigation to the sub-tree, and Sort fields must precede Range fields to prevent an in-memory SORT stage."
+  }
+}

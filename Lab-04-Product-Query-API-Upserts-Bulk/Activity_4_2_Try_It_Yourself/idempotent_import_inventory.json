@@ -1,0 +1,149 @@
+[
+  {
+    "sku": "IMP-101",
+    "category": "Peripherals",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Precision Wireless Gaming Mouse",
+    "price": 59.99,
+    "stock": 50,
+    "tags": [
+      "gaming",
+      "wireless"
+    ]
+  },
+  {
+    "sku": "IMP-102",
+    "category": "Peripherals",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Mechanical Tenkeyless Keyboard",
+    "price": 109.99,
+    "stock": 30,
+    "tags": [
+      "mechanical",
+      "rgb"
+    ]
+  },
+  {
+    "sku": "IMP-103",
+    "category": "Monitors",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Ultra-Wide QHD 34-Inch Monitor",
+    "price": 499.0,
+    "stock": 15,
+    "tags": [
+      "display",
+      "ultrawide",
+      "qhd"
+    ]
+  },
+  {
+    "sku": "IMP-104",
+    "category": "Audio",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Active Noise Canceling Headphones",
+    "price": 199.5,
+    "stock": 25,
+    "tags": [
+      "audio",
+      "anc",
+      "wireless"
+    ]
+  },
+  {
+    "sku": "IMP-105",
+    "category": "Accessories",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Heavy Duty Dual Monitor Arm",
+    "price": 79.99,
+    "stock": 40,
+    "tags": [
+      "ergonomic",
+      "accessories"
+    ]
+  },
+  {
+    "sku": "IMP-106",
+    "category": "Accessories",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "65W GaN Compact USB-C Charger (Updated Edition)",
+    "price": 29.99,
+    "stock": 120,
+    "tags": [
+      "charging",
+      "gan",
+      "usb-c",
+      "fast-charge"
+    ]
+  },
+  {
+    "sku": "IMP-107",
+    "category": "Wearables",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Waterproof Fitness Smart Band",
+    "price": 44.95,
+    "stock": 65,
+    "tags": [
+      "fitness",
+      "waterproof",
+      "sale"
+    ]
+  },
+  {
+    "sku": "IMP-108",
+    "category": "Accessories",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Aluminum Laptop Cooling Stand",
+    "price": 24.99,
+    "stock": 110,
+    "tags": [
+      "cooling",
+      "ergonomic"
+    ]
+  },
+  {
+    "sku": "IMP-109",
+    "category": "Accessories",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "Magnetic Wireless MagSafe PowerBank",
+    "price": 49.99,
+    "stock": 60,
+    "tags": [
+      "magsafe",
+      "wireless",
+      "powerbank"
+    ]
+  },
+  {
+    "sku": "IMP-110",
+    "category": "Peripherals",
+    "first_imported_at": "2026-11-18T09:26:22Z",
+    "is_active": true,
+    "last_synced_at": "2026-11-18T09:26:22Z",
+    "name": "4K Ultra-HD Streaming Webcam",
+    "price": 89.99,
+    "stock": 35,
+    "tags": [
+      "webcam",
+      "4k",
+      "streaming"
+    ]
+  }
+]

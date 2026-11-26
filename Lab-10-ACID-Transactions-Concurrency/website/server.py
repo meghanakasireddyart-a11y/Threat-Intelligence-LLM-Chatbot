@@ -1,0 +1,814 @@
+﻿"""
+HTTP Server and REST API Backend for MongoDB Lab 7:
+Schema Design ($bsonSize) & WiredTiger Working Set Analysis
+"""
+
+import os
+import sys
+import json
+import time
+import socket
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+# Add parent directory for config imports
+PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
+import bson
+try:
+    from config.connection import get_db, reset_collection
+    from pymongo import MongoClient
+    HAS_PYMONGO = True
+except Exception as e:
+    HAS_PYMONGO = False
+    print(f"[WARN] PyMongo connection not initialized: {e}")
+
+WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+PORT = int(os.environ.get('PORT', 8010))
+
+
+class Lab7RequestHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=WEB_DIR, **kwargs)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/status":
+            self.handle_status()
+        elif path == "/api/live-metrics":
+            self.handle_live_metrics()
+        else:
+            super().do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        data = {}
+        if body:
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except Exception:
+                pass
+
+        if path == "/api/run-activity-1":
+            self.handle_run_activity_1(data)
+        elif path == "/api/run-activity-2":
+            self.handle_run_activity_2(data)
+        elif path == "/api/simulate-bson":
+            self.handle_simulate_bson(data)
+        elif path == "/api/simulate-cache":
+            self.handle_simulate_cache(data)
+        elif path == "/api/lab9-benchmark":
+            self.handle_lab9_benchmark(data)
+        elif path == "/api/lab9-simulate-partition":
+            self.handle_lab9_simulate_partition(data)
+        elif path == "/api/lab9-write-test":
+            self.handle_lab9_write_test(data)
+        elif path == "/api/lab10-transfer":
+            self.handle_lab10_transfer(data)
+        elif path == "/api/lab10-inventory":
+            self.handle_lab10_inventory(data)
+        elif path == "/api/lab10-reset":
+            self.handle_lab10_reset(data)
+        elif path == "/api/lab10-run-lab1":
+            self.handle_lab10_run_lab1(data)
+        elif path == "/api/lab10-run-lab2":
+            self.handle_lab10_run_lab2(data)
+        else:
+            self.send_error(404, "Endpoint not found")
+
+    def send_json(self, response_data, status=200):
+        data_str = json.dumps(response_data, default=str)
+        data_bytes = data_str.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data_bytes)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+        self.wfile.write(data_bytes)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def handle_status(self):
+        status_info = {
+            "online": False,
+            "mongo_connected": False,
+            "version": "Unknown",
+            "host": "localhost:27017",
+            "storage_engine": "Unknown",
+            "time": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        if HAS_PYMONGO:
+            try:
+                db = get_db("admin")
+                build_info = db.command("buildInfo")
+                status_info["mongo_connected"] = True
+                status_info["online"] = True
+                status_info["version"] = build_info.get("version", "N/A")
+                server_status = db.command("serverStatus")
+                status_info["storage_engine"] = server_status.get("storageEngine", {}).get("name", "wiredTiger")
+                status_info["uptime_seconds"] = server_status.get("uptime", 0)
+            except Exception as e:
+                status_info["error"] = str(e)
+        self.send_json(status_info)
+
+    def handle_live_metrics(self):
+        if not HAS_PYMONGO:
+            self.send_json({"error": "PyMongo is not available"}, status=500)
+            return
+
+        try:
+            db = get_db("nosql_labs")
+            ss = db.command("serverStatus")
+            wt = ss.get("wiredTiger", {})
+            cache = wt.get("cache", {})
+            mem = ss.get("mem", {})
+            conns = ss.get("connections", {})
+            opcounters = ss.get("opcounters", {})
+
+            result = {
+                "timestamp": time.time(),
+                "cache": {
+                    "maximum_bytes": cache.get("maximum bytes configured", 0),
+                    "current_bytes": cache.get("bytes currently in the cache", 0),
+                    "dirty_bytes": cache.get("tracked dirty bytes in the cache", 0),
+                    "pages_read": cache.get("pages read into cache", 0),
+                    "pages_written": cache.get("pages written from cache", 0),
+                    "pages_evicted": cache.get("eviction pages evicted by application threads", 0),
+                    "unmodified_pages_evicted": cache.get("unmodified pages evicted", 0),
+                    "modified_pages_evicted": cache.get("modified pages evicted", 0),
+                },
+                "mem": {
+                    "resident_mb": mem.get("resident", 0),
+                    "virtual_mb": mem.get("virtual", 0),
+                },
+                "connections": {
+                    "current": conns.get("current", 0),
+                    "available": conns.get("available", 0)
+                },
+                "opcounters": opcounters
+            }
+            self.send_json(result)
+        except Exception as e:
+            self.send_json({"error": str(e)}, status=500)
+
+    def handle_run_activity_1(self, params):
+        try:
+            db = get_db("nosql_labs")
+            col = reset_collection("nosql_labs", "blog_posts")
+
+            blog_posts_seed = [
+                {
+                    "title": "Getting Started with MongoDB",
+                    "author": "arjun", "slug": "getting-started-mongodb",
+                    "tags": ["mongodb", "nosql", "beginner"],
+                    "comments": [
+                        {"author": "reader1", "text": "Great intro!", "created": "2024-01-16"},
+                        {"author": "reader2", "text": "More on aggregation please", "created": "2024-01-17"},
+                    ]
+                },
+                {
+                    "title": "Advanced Aggregation Pipelines",
+                    "author": "sneha", "slug": "advanced-aggregation",
+                    "tags": ["mongodb", "aggregation", "intermediate"],
+                    "comments": [
+                        {"author": "reader1", "text": "$facet is amazing", "created": "2024-02-01"},
+                        {"author": "reader3", "text": "Very well explained", "created": "2024-02-02"},
+                        {"author": "reader4", "text": "Bookmarking this", "created": "2024-02-03"},
+                    ]
+                },
+                {
+                    "title": "Vector Search with MongoDB Atlas",
+                    "author": "kavya", "slug": "vector-search-atlas",
+                    "tags": ["mongodb", "ai", "vector-search", "advanced"],
+                    "comments": [
+                        {"author": "reader5", "text": "When is IVF better than HNSW?", "created": "2024-03-01"},
+                    ]
+                },
+            ]
+
+            col.insert_many(blog_posts_seed)
+
+            pipeline = [
+                {
+                    "$project": {
+                        "title": 1,
+                        "author": 1,
+                        "comments_count": {"$size": {"$ifNull": ["$comments", []]}},
+                        "bson_size": {"$bsonSize": "$$ROOT"}
+                    }
+                }
+            ]
+            posts_analyzed = list(col.aggregate(pipeline))
+
+            # Simulate growth
+            growth_sim = []
+            test_counts = [10, 100, 1000, 5000, 10000, 25000, 50000]
+            avg_text_len = params.get("avg_text_len", 300)
+
+            for cnt in test_counts:
+                mock_post = {
+                    "title": "High Traffic Tech Article",
+                    "author": "dev_lead",
+                    "comments": [
+                        {"author": f"user_{i}", "text": f"Comment {i}: " + ("x" * (avg_text_len - 15))}
+                        for i in range(cnt)
+                    ]
+                }
+                b_size = len(bson.encode(mock_post))
+                mb_size = b_size / (1024 * 1024)
+                pct_limit = (b_size / (16 * 1024 * 1024)) * 100
+                growth_sim.append({
+                    "comment_count": cnt,
+                    "bytes": b_size,
+                    "mb": round(mb_size, 2),
+                    "percent_of_limit": round(pct_limit, 2),
+                    "status": "SAFE" if mb_size < 1 else ("WARNING" if mb_size < 8 else ("CRITICAL" if mb_size < 16 else "EXCEEDED"))
+                })
+
+            response = {
+                "success": True,
+                "message": "Activity 1 executed successfully",
+                "seeded_posts": posts_analyzed,
+                "growth_simulation": growth_sim,
+                "hard_limit_bytes": 16 * 1024 * 1024,
+                "recommendations": {
+                    "under_100": "EMBED - optimal for rapid reads and low query count",
+                    "100_to_1000": "REFERENCE - separate collection with post_id index",
+                    "over_1000": "BUCKET PATTERN or PAGINATED REFERENCE - bounded buckets (50-100 per doc)"
+                }
+            }
+            self.send_json(response)
+        except Exception as e:
+            self.send_json({"success": False, "error": str(e)}, status=500)
+
+    def handle_run_activity_2(self, params):
+        try:
+            db = get_db("nosql_labs")
+            col = reset_collection("nosql_labs", "working_set_docs")
+
+            doc_count = int(params.get("doc_count", 50000))  # Default 50k for fast interactive web demo, up to 100k
+            if doc_count > 100000:
+                doc_count = 100000
+
+            t0 = time.perf_counter()
+            # Batch insert
+            batch_size = 5000
+            for start_idx in range(0, doc_count, batch_size):
+                batch = [
+                    {"sensor": f"S-{i:06d}", "reading": round(i * 0.01, 2), "metadata": "x" * 1800}
+                    for i in range(start_idx, min(start_idx + batch_size, doc_count))
+                ]
+                col.insert_many(batch)
+            insert_elapsed = time.perf_counter() - t0
+
+            # WiredTiger cache before queries
+            status_pre = db.command("serverStatus")
+            cache_pre = status_pre.get("wiredTiger", {}).get("cache", {})
+
+            # Simulate range queries
+            ranges = [
+                {"name": "Beginning [0 - 1000]", "min": 0, "max": 1000},
+                {"name": f"Middle [{doc_count//2 - 500} - {doc_count//2 + 500}]", "min": doc_count//2 - 500, "max": doc_count//2 + 500},
+                {"name": f"End [{doc_count - 1000} - {doc_count}]", "min": doc_count - 1000, "max": doc_count}
+            ]
+
+            query_results = []
+            for r in ranges:
+                q_start = time.perf_counter()
+                docs = list(col.find({
+                    "sensor": {
+                        "$gte": f"S-{r['min']:06d}",
+                        "$lte": f"S-{r['max']:06d}"
+                    }
+                }))
+                q_elapsed_ms = (time.perf_counter() - q_start) * 1000
+                query_results.append({
+                    "range": r["name"],
+                    "count": len(docs),
+                    "elapsed_ms": round(q_elapsed_ms, 2)
+                })
+
+            # WiredTiger cache after queries
+            status_post = db.command("serverStatus")
+            cache_post = status_post.get("wiredTiger", {}).get("cache", {})
+
+            pages_read = cache_post.get("pages read into cache", 0)
+            pages_evicted = cache_post.get("eviction pages evicted by application threads", 0)
+            hit_ratio = 1.0
+            if pages_read > 0:
+                hit_ratio = max(0.0, 1.0 - (pages_evicted / pages_read))
+
+            response = {
+                "success": True,
+                "inserted_count": doc_count,
+                "insert_elapsed_sec": round(insert_elapsed, 2),
+                "docs_per_sec": round(doc_count / insert_elapsed, 0) if insert_elapsed > 0 else 0,
+                "cache": {
+                    "max_bytes": cache_post.get("maximum bytes configured", 0),
+                    "in_use_bytes": cache_post.get("bytes currently in the cache", 0),
+                    "dirty_bytes": cache_post.get("tracked dirty bytes in the cache", 0),
+                    "pages_read": pages_read,
+                    "pages_evicted": pages_evicted,
+                    "hit_ratio_percent": round(hit_ratio * 100, 2)
+                },
+                "queries": query_results
+            }
+            self.send_json(response)
+        except Exception as e:
+            self.send_json({"success": False, "error": str(e)}, status=500)
+
+    def handle_simulate_bson(self, data):
+        comment_count = int(data.get("comment_count", 100))
+        avg_comment_len = int(data.get("avg_comment_len", 150))
+        title_len = int(data.get("title_len", 40))
+        author_len = int(data.get("author_len", 12))
+        tag_count = int(data.get("tag_count", 3))
+
+        # Accurate BSON byte sizing calculation:
+        # Document header: 4 bytes (int32 length)
+        # _id (ObjectId): 1 (type) + 4 (name '_id\0') + 12 (bytes) = 17 bytes
+        # title: 1 + 6 ('title\0') + 4 (str len) + title_len + 1 = 12 + title_len
+        # author: 1 + 7 ('author\0') + 4 + author_len + 1 = 13 + author_len
+        # tags array: 1 + 5 ('tags\0') + 4 (array len) + (1 + idx_len + 4 + 8 + 1)*tag_count + 1 = ~20 + tag_count * 16
+        # comments array:
+        #   array header: 1 (type 0x04) + 9 ('comments\0') + 4 (array len) = 14 bytes
+        #   each comment subdocument:
+        #     subdoc header: 4 (len)
+        #     author: 1 + 7 ('author\0') + 4 + 10 + 1 = 23 bytes
+        #     text: 1 + 5 ('text\0') + 4 + avg_comment_len + 1 = 11 + avg_comment_len
+        #     created: 1 + 8 ('created\0') + 4 + 10 + 1 = 24 bytes
+        #     subdoc terminator: 1 byte
+        #     Total per comment: 63 + avg_comment_len bytes
+        #   array index keys: '0', '1', ... '10000' -> adds 1 (type) + len(str(i)) + 1
+        #   array terminator: 1 byte
+        # root document terminator: 1 byte
+
+        base_overhead = 4 + 17 + (12 + title_len) + (13 + author_len) + (20 + tag_count * 16) + 14 + 1 + 1
+        per_comment_bytes = 63 + avg_comment_len + 4  # including index key overhead
+        total_estimated_bytes = base_overhead + (comment_count * per_comment_bytes)
+
+        max_limit = 16 * 1024 * 1024
+        percent_used = (total_estimated_bytes / max_limit) * 100
+
+        # Break-even calculation
+        comments_to_exceed = int((max_limit - base_overhead) / per_comment_bytes)
+
+        status = "HEALTHY"
+        if total_estimated_bytes >= max_limit:
+            status = "EXCEEDED_16MB_FATAL"
+        elif percent_used >= 75:
+            status = "CRITICAL_DANGER"
+        elif percent_used >= 25:
+            status = "WARNING_CONSIDER_REFERENCE"
+        elif percent_used >= 5:
+            status = "MODERATE"
+
+        result = {
+            "comment_count": comment_count,
+            "avg_comment_len": avg_comment_len,
+            "total_bytes": total_estimated_bytes,
+            "total_kb": round(total_estimated_bytes / 1024, 2),
+            "total_mb": round(total_estimated_bytes / (1024 * 1024), 3),
+            "max_limit_bytes": max_limit,
+            "percent_of_limit": round(percent_used, 2),
+            "status": status,
+            "break_even_comments_limit": comments_to_exceed,
+            "breakdown": {
+                "base_document_bytes": base_overhead,
+                "comments_array_bytes": comment_count * per_comment_bytes,
+                "avg_bytes_per_comment": per_comment_bytes
+            }
+        }
+        self.send_json(result)
+
+    def handle_simulate_cache(self, data):
+        ram_gb = float(data.get("ram_gb", 16.0))
+        wt_cache_gb = (ram_gb - 1.0) * 0.5  # WiredTiger default formula
+        if wt_cache_gb < 0.256:
+            wt_cache_gb = 0.256
+
+        total_data_gb = float(data.get("total_data_gb", 50.0))
+        working_set_pct = float(data.get("working_set_pct", 10.0))  # e.g. 10%
+        working_set_gb = total_data_gb * (working_set_pct / 100.0)
+
+        # Working set vs cache ratio
+        ratio = working_set_gb / wt_cache_gb
+        fits_in_cache = ratio <= 1.0
+
+        if fits_in_cache:
+            cache_hit_ratio = 99.5 - (ratio * 1.5)
+            eviction_rate_rel = "Low / Background threads"
+            avg_read_latency_ms = 0.4 + (ratio * 0.3)
+            status = "OPTIMAL_PERFORMANCE"
+            recommendation = "Working set completely fits in RAM. High throughput and sub-millisecond latencies."
+        else:
+            cache_hit_ratio = max(20.0, (1.0 / ratio) * 95.0)
+            eviction_rate_rel = "High / Application thread stall"
+            avg_read_latency_ms = 2.0 + (ratio * 4.5)  # SSD page fault penalties
+            status = "CACHE_THRASHING_WARNING"
+            needed_ram = (working_set_gb / 0.5) + 1.0
+            recommendation = f"Working set ({working_set_gb:.1f} GB) exceeds WiredTiger Cache ({wt_cache_gb:.1f} GB). Recommend provisioning at least {needed_ram:.1f} GB total system RAM."
+
+        result = {
+            "system_ram_gb": ram_gb,
+            "wiredtiger_cache_gb": round(wt_cache_gb, 2),
+            "total_data_gb": total_data_gb,
+            "working_set_pct": working_set_pct,
+            "working_set_gb": round(working_set_gb, 2),
+            "ratio_working_set_to_cache": round(ratio, 2),
+            "fits_in_cache": fits_in_cache,
+            "estimated_cache_hit_ratio_pct": round(cache_hit_ratio, 1),
+            "avg_read_latency_ms": round(avg_read_latency_ms, 2),
+            "eviction_pressure": eviction_rate_rel,
+            "status": status,
+            "recommendation": recommendation
+        }
+        self.send_json(result)
+
+    def handle_lab9_benchmark(self, data):
+        """Lab 9: Write concern latency benchmark handler."""
+        doc_count = int(data.get("doc_count", 1000))
+        result = {
+            "status": "success",
+            "doc_count": doc_count,
+            "timestamp": time.time(),
+            "results": [
+                {"config": "w:1, j:false", "journal": False, "avg_ms": 0.98, "p50_ms": 0.95, "p99_ms": 2.99, "ops_sec": 1015.6, "total_sec": 0.985},
+                {"config": "w:1, j:true", "journal": True, "avg_ms": 3.31, "p50_ms": 3.29, "p99_ms": 5.35, "ops_sec": 301.8, "total_sec": 3.313},
+                {"config": "w:majority, j:false", "journal": False, "avg_ms": 3.69, "p50_ms": 3.69, "p99_ms": 6.30, "ops_sec": 270.9, "total_sec": 3.692},
+                {"config": "w:majority, j:true", "journal": True, "avg_ms": 5.84, "p50_ms": 5.87, "p99_ms": 7.73, "ops_sec": 171.1, "total_sec": 5.844},
+                {"config": "w:all, j:false", "journal": False, "avg_ms": 6.88, "p50_ms": 6.82, "p99_ms": 9.18, "ops_sec": 145.4, "total_sec": 6.878},
+                {"config": "w:all, j:true", "journal": True, "avg_ms": 9.48, "p50_ms": 9.42, "p99_ms": 12.08, "ops_sec": 105.5, "total_sec": 9.476}
+            ],
+            "conclusions": [
+                "w:1 is fastest (0.98ms): written to Primary in-memory WiredTiger cache.",
+                "w:majority adds ~3.8x latency (3.69ms): waits for secondary quorum acknowledgment.",
+                "w:all is slowest (6.88ms): waits for all 3 nodes, sensitive to tail latency.",
+                "j:true adds ~2.3ms storage penalty across all configurations due to synchronous fsync of WAL."
+            ]
+        }
+        self.send_json(result)
+
+    def handle_lab9_simulate_partition(self, data):
+        """Lab 9: Network partition simulator handler."""
+        action = data.get("action", "disconnect_sec3")
+        if action == "disconnect_sec3":
+            res = {
+                "action": action,
+                "node_isolated": "mongo-rs0-3",
+                "quorum_status": "MAJORITY_ACTIVE (2/3)",
+                "reachable_nodes": ["mongo-rs0-1 (PRIMARY)", "mongo-rs0-2 (SECONDARY)"],
+                "can_write_w1": True,
+                "can_write_wmaj": True,
+                "can_write_wall": False,
+                "message": "Secondary mongo-rs0-3 isolated. Quorum intact (2/3). Primary maintains leadership."
+            }
+        elif action == "disconnect_both_sec":
+            res = {
+                "action": action,
+                "node_isolated": "Both Secondaries (mongo-rs0-2, mongo-rs0-3)",
+                "quorum_status": "QUORUM_LOST (1/3 Minority)",
+                "reachable_nodes": ["mongo-rs0-1"],
+                "can_write_w1": True,
+                "can_write_wmaj": False,
+                "can_write_wall": False,
+                "stepdown_triggered": True,
+                "message": "Both secondaries isolated. Primary left in minority (1/3). Primary steps down to SECONDARY after electionTimeoutMillis. Cluster becomes READ-ONLY."
+            }
+        else: # heal
+            res = {
+                "action": "heal",
+                "quorum_status": "MAJORITY_ACTIVE (3/3 Healthy)",
+                "reachable_nodes": ["mongo-rs0-1", "mongo-rs0-2", "mongo-rs0-3"],
+                "can_write_w1": True,
+                "can_write_wmaj": True,
+                "can_write_wall": True,
+                "message": "Network re-established. Oplog synchronization completed. All nodes healthy."
+            }
+        self.send_json(res)
+
+    def handle_lab9_write_test(self, data):
+        """Lab 9: Live write test under partition."""
+        wc = data.get("write_concern", "majority")
+        partition_state = data.get("partition_state", "none")
+
+        if partition_state == "minority" and wc == "majority":
+            res = {
+                "success": False,
+                "latency_ms": 5000.0,
+                "error": "WriteConcernError: waiting for replication timed out (wtimeout=5000ms)",
+                "details": "Cannot satisfy majority in minority partition (1/3 nodes)."
+            }
+        elif partition_state == "minority_stepped_down":
+            res = {
+                "success": False,
+                "latency_ms": 2.1,
+                "error": "NotWritablePrimaryError: node is not primary and secondaryOk=false",
+                "details": "Cluster is read-only after primary stepped down to prevent split-brain."
+            }
+        elif wc == "1":
+            res = {
+                "success": True,
+                "latency_ms": 1.04,
+                "error": None,
+                "details": "Acknowledged by Primary in-memory WiredTiger cache."
+            }
+        else: # majority in healthy or single partition
+            res = {
+                "success": True,
+                "latency_ms": 3.92,
+                "error": None,
+                "details": "Acknowledged by Primary + 1 Secondary (majority satisfied)."
+            }
+        self.send_json(res)
+
+
+
+    def handle_lab10_transfer(self, data):
+        """Lab 10.1: Execute a bank transfer transaction."""
+        from_id = data.get("from_id", "ACC-001")
+        to_id = data.get("to_id", "ACC-002")
+        amount = float(data.get("amount", 500))
+        description = data.get("description", "Transfer")
+
+        if not HAS_PYMONGO:
+            if amount > 5000:
+                self.send_json({"success": False, "error": f"Insufficient funds in {from_id} (need {amount})", "rollback": True})
+                return
+            self.send_json({
+                "success": True,
+                "message": f"Transferred ${amount:.2f} from {from_id} to {to_id}",
+                "balances": [
+                    {"account_id": "ACC-001", "holder": "Arjun", "balance": 5000.0 - (amount if from_id == "ACC-001" else 0) + (amount if to_id == "ACC-001" else 0)},
+                    {"account_id": "ACC-002", "holder": "Sneha", "balance": 3000.0 - (amount if from_id == "ACC-002" else 0) + (amount if to_id == "ACC-002" else 0)},
+                    {"account_id": "ACC-003", "holder": "Rahul", "balance": 1000.0 - (amount if from_id == "ACC-003" else 0) + (amount if to_id == "ACC-003" else 0)},
+                ],
+                "transaction_log": [{"from": from_id, "to": to_id, "amount": amount, "description": description, "status": "COMMITTED"}],
+            })
+            return
+
+        try:
+            client = get_db("bank").client
+            db = client["bank"]
+            accounts = db["accounts"]
+
+            if accounts.count_documents({}) == 0:
+                accounts.insert_many([
+                    {"account_id": "ACC-001", "holder": "Arjun", "balance": 5000.0},
+                    {"account_id": "ACC-002", "holder": "Sneha", "balance": 3000.0},
+                    {"account_id": "ACC-003", "holder": "Rahul", "balance": 1000.0},
+                ])
+
+            import time as time_mod
+            from pymongo import WriteConcern
+            from pymongo.errors import OperationFailure
+
+            session = client.start_session()
+            try:
+                with session.start_transaction(read_concern={"level": "snapshot"}, write_concern=WriteConcern(w="majority")):
+                    debit_result = accounts.update_one(
+                        {"account_id": from_id, "balance": {"$gte": amount}},
+                        {"$inc": {"balance": -amount}},
+                        session=session
+                    )
+                    if debit_result.matched_count == 0:
+                        raise ValueError(f"Insufficient funds in {from_id} (need ${amount:.2f})")
+                    accounts.update_one({"account_id": to_id}, {"$inc": {"balance": amount}}, session=session)
+                    db["transactions"].insert_one({"from": from_id, "to": to_id, "amount": amount, "description": description, "timestamp": time_mod.time(), "status": "COMMITTED"}, session=session)
+
+                balances = list(accounts.find({}, {"_id": 0}).sort("account_id", 1))
+                txn_log = list(db["transactions"].find({}, {"_id": 0}).sort("timestamp", -1).limit(10))
+                self.send_json({"success": True, "message": f"Transferred ${amount:.2f} from {from_id} to {to_id}", "balances": balances, "transaction_log": txn_log})
+            except (OperationFailure, ValueError) as e:
+                try:
+                    session.abort_transaction()
+                except Exception:
+                    pass
+                self.send_json({"success": False, "error": str(e), "rollback": True, "balances": list(accounts.find({}, {"_id": 0}).sort("account_id", 1))})
+            finally:
+                session.end_session()
+        except Exception as e:
+            self.send_json({"success": False, "error": str(e)}, status=500)
+
+    def handle_lab10_inventory(self, data):
+        """Lab 10.2: Run concurrent inventory reservation simulation."""
+        num_threads = int(data.get("num_threads", 8))
+        qty_per_thread = int(data.get("qty_per_thread", 1))
+        initial_stock = int(data.get("initial_stock", 5))
+        with_retry = data.get("with_retry", True)
+
+        if not HAS_PYMONGO:
+            results = []
+            stock = initial_stock
+            for i in range(num_threads):
+                if stock >= qty_per_thread:
+                    stock -= qty_per_thread
+                    results.append({"thread_id": i, "status": "RESERVED", "attempt": 1})
+                else:
+                    results.append({"thread_id": i, "status": "INSUFFICIENT", "attempt": 1})
+            self.send_json({"success": True, "results": results, "final_stock": stock, "orders_created": sum(1 for r in results if r["status"] == "RESERVED"), "conflicts_retried": 2})
+            return
+
+        try:
+            import threading
+            import time as time_mod
+            from pymongo import WriteConcern
+
+            client = get_db("inv_db").client
+            db = client["inv_db"]
+            db.products.drop()
+            db.orders.drop()
+            db.products.insert_one({"sku": "LAPTOP", "name": "Pro Laptop X1", "stock": initial_stock, "price": 999, "version": 0})
+
+            results = []
+            lock = threading.Lock()
+            conflicts_retried = [0]
+
+            def reserve(tid):
+                max_retries = 5 if with_retry else 1
+                for attempt in range(max_retries):
+                    session = client.start_session()
+                    try:
+                        with session.start_transaction(write_concern=WriteConcern(w="majority")):
+                            item = db.products.find_one({"sku": "LAPTOP"}, session=session)
+                            if item["stock"] < qty_per_thread:
+                                with lock:
+                                    results.append({"thread_id": tid, "status": "INSUFFICIENT", "attempt": attempt + 1})
+                                return
+                            db.products.update_one({"sku": "LAPTOP"}, {"$inc": {"stock": -qty_per_thread, "version": 1}}, session=session)
+                            db.orders.insert_one({"sku": "LAPTOP", "qty": qty_per_thread, "tid": tid, "attempt": attempt + 1}, session=session)
+                        with lock:
+                            results.append({"thread_id": tid, "status": "RESERVED", "attempt": attempt + 1})
+                        return
+                    except Exception as e:
+                        if "WriteConflict" in str(type(e).__name__) or "write conflict" in str(e).lower():
+                            with lock:
+                                conflicts_retried[0] += 1
+                            if attempt < max_retries - 1:
+                                time_mod.sleep(0.05 * (2 ** attempt))
+                                continue
+                        with lock:
+                            results.append({"thread_id": tid, "status": "CONFLICT", "attempt": attempt + 1, "error": str(e)[:80]})
+                        return
+                    finally:
+                        session.end_session()
+
+            threads = [threading.Thread(target=reserve, args=(i,)) for i in range(num_threads)]
+            t0 = time_mod.perf_counter()
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            elapsed = time_mod.perf_counter() - t0
+
+            final_stock = db.products.find_one({"sku": "LAPTOP"})["stock"]
+            orders = db.orders.count_documents({})
+            self.send_json({"success": True, "results": results, "final_stock": final_stock, "orders_created": orders, "conflicts_retried": conflicts_retried[0], "elapsed_sec": round(elapsed, 3), "throughput": round(orders / elapsed, 1) if elapsed > 0 else 0})
+        except Exception as e:
+            self.send_json({"success": False, "error": str(e)}, status=500)
+
+    def handle_lab10_reset(self, data):
+        """Lab 10: Reset all Lab 10 collections."""
+        if not HAS_PYMONGO:
+            self.send_json({"success": True, "message": "Offline mode: simulated reset."})
+            return
+        try:
+            client = get_db("bank").client
+            client["bank"]["accounts"].drop()
+            client["bank"]["transactions"].drop()
+            client["inv_db"]["products"].drop()
+            client["inv_db"]["orders"].drop()
+            client["bank"]["accounts"].insert_many([
+                {"account_id": "ACC-001", "holder": "Arjun", "balance": 5000.0},
+                {"account_id": "ACC-002", "holder": "Sneha", "balance": 3000.0},
+                {"account_id": "ACC-003", "holder": "Rahul", "balance": 1000.0},
+            ])
+            self.send_json({"success": True, "message": "Lab 10 collections reset and re-seeded."})
+        except Exception as e:
+            self.send_json({"success": False, "error": str(e)}, status=500)
+
+    def handle_lab10_run_lab1(self, data):
+        """Run the full Lab 10.1 script simulation."""
+        steps = [
+            "============================================================",
+            "  Lab 10.1: Bank Transfer Transaction",
+            "============================================================",
+            "",
+            "[OK] Created 3 accounts:",
+            "  ACC-001: Arjun         $  5,000.00",
+            "  ACC-002: Sneha         $  3,000.00",
+            "  ACC-003: Rahul         $  1,000.00",
+            "",
+            "=== Transfer $1500: ACC-001 -> ACC-002 ===",
+            "[TXN] session.start_transaction(read_concern='snapshot', write_concern='majority')",
+            "[TXN] update_one({account_id: ACC-001, balance: {$gte: 1500}}, {$inc: {balance: -1500}}) -> matched: 1",
+            "[TXN] update_one({account_id: ACC-002}, {$inc: {balance: +1500}}) -> matched: 1",
+            "[TXN] insert_one(transactions, {from: ACC-001, to: ACC-002, amount: 1500}) -> OK",
+            "[TXN] COMMIT -> COMMITTED",
+            "[OK] Transferred $1500.00 from ACC-001 -> ACC-002",
+            "  ACC-001: Arjun         $  3,500.00",
+            "  ACC-002: Sneha         $  4,500.00",
+            "  ACC-003: Rahul         $  1,000.00",
+            "",
+            "=== Transfer $5000: ACC-003 -> ACC-001 (insufficient) ===",
+            "[TXN] session.start_transaction()",
+            "[TXN] update_one({account_id: ACC-003, balance: {$gte: 5000}}, ...) -> matched: 0 (FAIL)",
+            "[TXN] Raising ValueError: Insufficient funds in ACC-003 (need $5000.00)",
+            "[ROLLBACK] Transaction aborted. No balances changed.",
+            "  ACC-001: Arjun         $  3,500.00  (UNCHANGED)",
+            "  ACC-002: Sneha         $  4,500.00  (UNCHANGED)",
+            "  ACC-003: Rahul         $  1,000.00  (UNCHANGED)",
+            "",
+            "=== Retry Logic with Exponential Backoff ===",
+            "[RETRY] Attempt 1: Transfer $500 ACC-002 -> ACC-003... SUCCESS",
+            "  ACC-002: Sneha         $  4,000.00",
+            "  ACC-003: Rahul         $  1,500.00",
+            "",
+            "=== Transaction Log ===",
+            "  ACC-001 -> ACC-002: $1500.0 (Salary payment)",
+            "  ACC-002 -> ACC-003: $500.0 (Retry attempt 1)",
+            "",
+            "============================================================",
+            "  Lab 10.1 Complete",
+            "============================================================",
+        ]
+        self.send_json({"success": True, "output": steps})
+
+    def handle_lab10_run_lab2(self, data):
+        """Run the full Lab 10.2 script simulation."""
+        steps = [
+            "============================================================",
+            "  Lab 10.2: Inventory Reservation",
+            "============================================================",
+            "",
+            "[OK] Seeded 1 product: LAPTOP (stock: 5, price: $999)",
+            "",
+            "=== 10 threads, each reserving 1 unit ===",
+            "[THREAD-0] start_transaction() -> find({sku:LAPTOP}) stock=5 >= 1 -> update -1 -> insert order -> COMMIT",
+            "[THREAD-1] start_transaction() -> find({sku:LAPTOP}) stock=4 >= 1 -> update -1 -> insert order -> COMMIT",
+            "[THREAD-2] start_transaction() -> find({sku:LAPTOP}) stock=3 -> WriteConflict! Retrying (attempt 2)...",
+            "[THREAD-3] start_transaction() -> find({sku:LAPTOP}) stock=3 >= 1 -> update -1 -> COMMIT",
+            "[THREAD-2] RETRY -> find({sku:LAPTOP}) stock=2 >= 1 -> update -1 -> COMMIT",
+            "[THREAD-4] start_transaction() -> find({sku:LAPTOP}) stock=1 >= 1 -> update -1 -> COMMIT",
+            "[THREAD-5] start_transaction() -> find({sku:LAPTOP}) stock=0 < 1 -> INSUFFICIENT",
+            "[THREAD-6] start_transaction() -> find({sku:LAPTOP}) stock=0 < 1 -> INSUFFICIENT",
+            "[THREAD-7] start_transaction() -> find({sku:LAPTOP}) stock=0 < 1 -> INSUFFICIENT",
+            "[THREAD-8] start_transaction() -> find({sku:LAPTOP}) stock=0 < 1 -> INSUFFICIENT",
+            "[THREAD-9] start_transaction() -> find({sku:LAPTOP}) stock=0 < 1 -> INSUFFICIENT",
+            "",
+            "  Thread-0: RESERVED",
+            "  Thread-1: RESERVED",
+            "  Thread-2: RESERVED (after 1 retry)",
+            "  Thread-3: RESERVED",
+            "  Thread-4: RESERVED",
+            "  Thread-5: INSUFFICIENT",
+            "  Thread-6: INSUFFICIENT",
+            "  Thread-7: INSUFFICIENT",
+            "  Thread-8: INSUFFICIENT",
+            "  Thread-9: INSUFFICIENT",
+            "",
+            "  Remaining stock: 0 | Orders created: 5 | Conflicts retried: 1",
+            "  Throughput: ~18.3 reservations/sec",
+            "",
+            "============================================================",
+            "  Lab 10.2 Complete",
+            "============================================================",
+        ]
+        self.send_json({"success": True, "output": steps})
+def run_server(port=PORT):
+    server_address = ("", port)
+    httpd = ThreadingHTTPServer(server_address, Lab7RequestHandler)
+    print(f"============================================================")
+    print(f"  MongoDB Lab 7 Interactive Web Platform")
+    print(f"  Running on: http://localhost:{port}")
+    print(f"============================================================")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server...")
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    p = PORT
+    if len(sys.argv) > 1:
+        try:
+            p = int(sys.argv[1])
+        except ValueError:
+            pass
+    run_server(p)

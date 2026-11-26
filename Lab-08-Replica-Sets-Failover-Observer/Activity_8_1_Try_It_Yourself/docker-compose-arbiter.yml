@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  mongo-data-1:
+    image: mongo:7.0
+    container_name: mongo-data-1
+    command: ["mongod", "--replSet", "rs_arbiter", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data1:/data/db
+
+  mongo-data-2:
+    image: mongo:7.0
+    container_name: mongo-data-2
+    command: ["mongod", "--replSet", "rs_arbiter", "--bind_ip_all", "--port", "27018"]
+    ports:
+      - "27018:27018"
+    volumes:
+      - mongo_data2:/data/db
+
+  mongo-arbiter:
+    image: mongo:7.0
+    container_name: mongo-arbiter
+    command: ["mongod", "--replSet", "rs_arbiter", "--bind_ip_all", "--port", "27019"]
+    ports:
+      - "27019:27019"
+    # Note: Arbiter does not store actual user collections or oplogs,
+    # requiring negligible storage footprint compared to data-bearing nodes.
+    volumes:
+      - mongo_arbiter_data:/data/db
+
+volumes:
+  mongo_data1:
+  mongo_data2:
+  mongo_arbiter_data:

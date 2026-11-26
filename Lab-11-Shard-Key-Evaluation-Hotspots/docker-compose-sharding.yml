@@ -1,0 +1,72 @@
+version: '3.8'
+
+# ==============================================================================
+# Docker Compose: Two-Shard MongoDB Cluster + Interactive Lab Demonstration
+# Student: Kasireddy Meghana (24BTRCL119)
+# Lab 11: Shard Key Evaluation & Hotspot Detection
+# Components: Config Server Replica, Shard A Replica, Shard B Replica, mongos Router, Web Portal
+# ==============================================================================
+
+services:
+  # Config Server Replica Set (1 node for dev/lab demonstration)
+  configsvr:
+    image: mongo:7.0
+    container_name: mongo-configsvr
+    command: mongod --configsvr --replSet configReplSet --port 27019 --bind_ip_all
+    ports:
+      - "27019:27019"
+    networks:
+      - shard-net
+
+  # Shard A Primary
+  shard-a:
+    image: mongo:7.0
+    container_name: mongo-shard-a
+    command: mongod --shardsvr --replSet shardReplSetA --port 27018 --bind_ip_all
+    ports:
+      - "27018:27018"
+    networks:
+      - shard-net
+
+  # Shard B Primary
+  shard-b:
+    image: mongo:7.0
+    container_name: mongo-shard-b
+    command: mongod --shardsvr --replSet shardReplSetB --port 27020 --bind_ip_all
+    ports:
+      - "27020:27020"
+    networks:
+      - shard-net
+
+  # mongos Query Router
+  mongos:
+    image: mongo:7.0
+    container_name: mongo-router
+    depends_on:
+      - configsvr
+      - shard-a
+      - shard-b
+    command: mongos --configdb configReplSet/configsvr:27019 --port 27017 --bind_ip_all
+    ports:
+      - "27017:27017"
+    networks:
+      - shard-net
+
+  # Interactive Web Platform & API
+  web-portal:
+    build: .
+    image: kasireddymeghana/nosql-lab11:latest
+    container_name: nosql-lab11-portal
+    depends_on:
+      - mongos
+    environment:
+      - MONGO_URI=mongodb://mongos:27017
+      - PORT=8011
+    ports:
+      - "8011:8011"
+    networks:
+      - shard-net
+
+networks:
+  shard-net:
+    driver: bridge

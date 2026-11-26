@@ -1,0 +1,165 @@
+[
+  {
+    "sku": "ACC-001",
+    "name": "Braided USB-C Fast Charging Cable",
+    "category": "Accessories",
+    "price": 14.99,
+    "stock": 120,
+    "tags": [
+      "accessories",
+      "cables"
+    ],
+    "rating": 4.5,
+    "is_active": true
+  },
+  {
+    "sku": "ACC-002",
+    "name": "Aluminum Multiport USB-C Hub",
+    "category": "Accessories",
+    "price": 45.0,
+    "stock": 0,
+    "tags": [
+      "electronics",
+      "accessories"
+    ],
+    "rating": 4.2,
+    "is_active": false
+  },
+  {
+    "sku": "ACC-003",
+    "name": "Memory Foam Ergonomic Mousepad",
+    "category": "Accessories",
+    "price": 19.99,
+    "stock": 90,
+    "tags": [
+      "accessories",
+      "ergonomic"
+    ],
+    "rating": 4.2,
+    "is_active": true
+  },
+  {
+    "sku": "AUD-001",
+    "name": "Wireless Noise-Canceling Earbuds",
+    "category": "Audio",
+    "price": 49.99,
+    "stock": 45,
+    "tags": [
+      "electronics",
+      "wireless",
+      "audio",
+      "premium"
+    ],
+    "rating": 4.7,
+    "is_active": true
+  },
+  {
+    "sku": "AUD-002",
+    "name": "Bluetooth Pocket Speaker",
+    "category": "Audio",
+    "price": 29.99,
+    "stock": 0,
+    "tags": [
+      "electronics",
+      "wireless"
+    ],
+    "rating": 4.1,
+    "is_active": false
+  },
+  {
+    "sku": "GAM-001",
+    "name": "Wireless Gamepad Controller",
+    "category": "Gaming",
+    "price": 39.99,
+    "stock": 55,
+    "tags": [
+      "electronics",
+      "wireless"
+    ],
+    "rating": 4.3,
+    "is_active": true
+  },
+  {
+    "sku": "KBD-001",
+    "name": "Mechanical RGB Gaming Keyboard",
+    "category": "Peripherals",
+    "price": 129.99,
+    "stock": 18,
+    "tags": [
+      "electronics",
+      "gaming",
+      "premium"
+    ],
+    "rating": 4.8,
+    "is_active": true
+  },
+  {
+    "sku": "LAP-001",
+    "name": "UltraSlim Carbon Laptop 14-inch",
+    "category": "Computers",
+    "price": 1199.0,
+    "stock": 12,
+    "tags": [
+      "electronics",
+      "wireless",
+      "premium"
+    ],
+    "rating": 4.9,
+    "is_active": true
+  },
+  {
+    "sku": "MON-001",
+    "name": "Curved 34-inch Ultrawide Monitor",
+    "category": "Displays",
+    "price": 549.99,
+    "stock": 0,
+    "tags": [
+      "electronics",
+      "displays",
+      "premium"
+    ],
+    "rating": 4.8,
+    "is_active": false
+  },
+  {
+    "sku": "MOU-001",
+    "name": "Ergonomic Optical Wireless Mouse",
+    "category": "Peripherals",
+    "price": 34.5,
+    "stock": 60,
+    "tags": [
+      "electronics",
+      "wireless"
+    ],
+    "rating": 4.4,
+    "is_active": true
+  },
+  {
+    "sku": "WRB-001",
+    "name": "ProTrack GPS Smartwatch",
+    "category": "Wearables",
+    "price": 249.99,
+    "stock": 25,
+    "tags": [
+      "electronics",
+      "wireless",
+      "fitness",
+      "premium"
+    ],
+    "rating": 4.6,
+    "is_active": true
+  },
+  {
+    "sku": "WRB-002",
+    "name": "Basic Step-Tracker Fitness Band",
+    "category": "Wearables",
+    "price": 24.99,
+    "stock": 80,
+    "tags": [
+      "fitness",
+      "wearable"
+    ],
+    "rating": 3.9,
+    "is_active": true
+  }
+]

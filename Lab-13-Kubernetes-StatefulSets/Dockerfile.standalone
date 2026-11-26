@@ -1,0 +1,16 @@
+# Lab 13 Standalone: Copies Lab 7 website + Lab 13 files
+FROM python:3.11-slim
+
+LABEL maintainer="kasireddymeghana"
+LABEL description="NoSQL Lab 13 Standalone - Production Replica Set & Kubernetes StatefulSet"
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir pymongo bson
+
+# These paths assume building from the NoSQL LAB 13 directory
+COPY . .
+
+EXPOSE 8000
+
+CMD ["python", "website/server.py", "8000"]

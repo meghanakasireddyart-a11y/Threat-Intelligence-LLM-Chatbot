@@ -1,0 +1,66 @@
+{
+  "activity": "Activity 6.1 Try-It-Yourself: Prefix Rule Verification",
+  "author": "Kasireddy Meghana (USN: 24BTRCL119)",
+  "demonstrations": [
+    {
+      "label": "Test 1: Filter on 'level' only (Leading Prefix Match)",
+      "query": "{'level': 'ERROR'}",
+      "sort": null,
+      "stage": "FETCH",
+      "index": "idx_level_service_only",
+      "totalDocsExamined": 12678,
+      "totalKeysExamined": 12678,
+      "nReturned": 12678,
+      "executionTimeMillis": 70,
+      "inMemorySort": false
+    },
+    {
+      "label": "Test 2: Filter on 'level' AND 'service' (Full Compound Match)",
+      "query": "{'level': 'ERROR', 'service': 'payment-svc'}",
+      "sort": null,
+      "stage": "FETCH",
+      "index": "idx_level_service_only",
+      "totalDocsExamined": 2509,
+      "totalKeysExamined": 2509,
+      "nReturned": 2509,
+      "executionTimeMillis": 12,
+      "inMemorySort": false
+    },
+    {
+      "label": "Test 3: Filter on 'service' ALONE (Non-Prefix Trailing Field)",
+      "query": "{'service': 'payment-svc'}",
+      "sort": null,
+      "stage": "COLLSCAN",
+      "index": "COLLSCAN",
+      "totalDocsExamined": 50000,
+      "totalKeysExamined": 0,
+      "nReturned": 10010,
+      "executionTimeMillis": 69,
+      "inMemorySort": false
+    },
+    {
+      "label": "Test 4: Filter on 'level' + Sort by 'service' (Index-Assisted Sort)",
+      "query": "{'level': 'ERROR'}",
+      "sort": "[('service', 1)]",
+      "stage": "FETCH",
+      "index": "idx_level_service_only",
+      "totalDocsExamined": 12678,
+      "totalKeysExamined": 12678,
+      "nReturned": 12678,
+      "executionTimeMillis": 58,
+      "inMemorySort": false
+    },
+    {
+      "label": "Test 5: Filter on 'level' + Sort by 'status_code' (Unindexed Sort -> In-Memory Sort)",
+      "query": "{'level': 'ERROR'}",
+      "sort": "[('status_code', 1)]",
+      "stage": "SORT",
+      "index": "COLLSCAN",
+      "totalDocsExamined": 12678,
+      "totalKeysExamined": 12678,
+      "nReturned": 12678,
+      "executionTimeMillis": 80,
+      "inMemorySort": true
+    }
+  ]
+}

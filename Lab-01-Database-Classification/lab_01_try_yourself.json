@@ -1,0 +1,114 @@
+[
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a4"
+    },
+    "name": "DynamoDB",
+    "family": "Key-Value / Document",
+    "primary_model": "Key-Value",
+    "data_model": "Partition Key / JSON Document",
+    "vendor": "Amazon Web Services",
+    "use_case": "Shopping carts, high-throughput session state, gaming leaderboards",
+    "open_source": false,
+    "multi_model": true,
+    "latency_tier": "Single-digit millisecond"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a5"
+    },
+    "name": "InfluxDB",
+    "family": "Wide-Column / Time-Series",
+    "primary_model": "Time-Series",
+    "data_model": "TSM Engine / Columnar Time-Series",
+    "vendor": "InfluxData",
+    "use_case": "IoT sensor telemetry, server metrics, real-time DevOps monitoring",
+    "open_source": true,
+    "multi_model": false,
+    "latency_tier": "Sub-10 millisecond range scans"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a6"
+    },
+    "name": "OrientDB",
+    "family": "Multi-Model (Document + Graph)",
+    "primary_model": "Graph / Document",
+    "data_model": "Direct Pointer Graph + Document",
+    "vendor": "OrientDB Ltd.",
+    "use_case": "Fraud rings, recommendation networks, dynamic knowledge graphs",
+    "open_source": true,
+    "multi_model": true,
+    "latency_tier": "Millisecond graph traversals"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a7"
+    },
+    "name": "ScyllaDB",
+    "family": "Wide-Column",
+    "primary_model": "Wide-Column",
+    "data_model": "Column-Family (C++ async architecture)",
+    "vendor": "ScyllaDB Inc.",
+    "use_case": "Ultra-low latency real-time messaging, financial tick data, ad-tech",
+    "open_source": true,
+    "multi_model": false,
+    "latency_tier": "Sub-millisecond p99"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a8"
+    },
+    "name": "ArangoDB",
+    "family": "Multi-Model (Document + Graph + Search)",
+    "primary_model": "Document / Graph",
+    "data_model": "JSON Document + Graph Edge Traversal",
+    "vendor": "ArangoDB GmbH",
+    "use_case": "Master data management, identity graphs, integrated full-text search",
+    "open_source": true,
+    "multi_model": true,
+    "latency_tier": "Millisecond multi-model queries"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693a9"
+    },
+    "name": "Google Cloud Bigtable",
+    "family": "Wide-Column",
+    "primary_model": "Wide-Column",
+    "data_model": "Sparse multi-dimensional sorted map",
+    "vendor": "Google Cloud",
+    "use_case": "Petabyte-scale analytical workloads, financial time-series, GIS maps",
+    "open_source": false,
+    "multi_model": false,
+    "latency_tier": "Low single-digit millisecond"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693aa"
+    },
+    "name": "ClickHouse",
+    "family": "Columnar / OLAP",
+    "primary_model": "Columnar",
+    "data_model": "Column-Oriented Vectorized Execution",
+    "vendor": "ClickHouse Inc.",
+    "use_case": "Real-time analytical dashboards, clickstream web analytics, log exploration",
+    "open_source": true,
+    "multi_model": false,
+    "latency_tier": "Sub-second aggregate scans on billions of rows"
+  },
+  {
+    "_id": {
+      "$oid": "6afd5e39731e618c66c693ab"
+    },
+    "name": "Firebase Firestore",
+    "family": "Document",
+    "primary_model": "Document",
+    "data_model": "Hierarchical Document / Collection",
+    "vendor": "Google",
+    "use_case": "Mobile apps with offline sync, collaborative web applications",
+    "open_source": false,
+    "multi_model": false,
+    "latency_tier": "Millisecond document listeners"
+  }
+]

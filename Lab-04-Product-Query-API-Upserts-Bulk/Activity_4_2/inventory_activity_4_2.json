@@ -1,0 +1,56 @@
+[
+  {
+    "sku": "PROD-A",
+    "name": "Wireless Ergonomic Mouse",
+    "price": 34.99,
+    "stock": 50,
+    "is_active": true
+  },
+  {
+    "sku": "PROD-B",
+    "name": "Mechanical Gaming Keyboard",
+    "price": 89.99,
+    "stock": 40,
+    "is_active": true
+  },
+  {
+    "sku": "PROD-C",
+    "name": "USB-C Fast Charging Hub",
+    "price": 39.99,
+    "stock": 25,
+    "is_active": true
+  },
+  {
+    "sku": "PROD-D",
+    "name": "Legacy VGA to HDMI Adapter",
+    "price": 12.5,
+    "stock": 50,
+    "is_active": false
+  },
+  {
+    "sku": "PROD-E",
+    "name": "Discontinued Bluetooth Dongle",
+    "price": 8.0,
+    "stock": 30,
+    "is_active": false
+  },
+  {
+    "sku": "PROD-F",
+    "category": "Peripherals",
+    "is_active": true,
+    "name": "Multi-Device Bluetooth Stylus",
+    "price": 59.99,
+    "stock": 20,
+    "tags": [
+      "stylus",
+      "wireless"
+    ]
+  },
+  {
+    "sku": "PROD-G",
+    "is_active": true,
+    "name": "Magnetic Cable Clips",
+    "price": 19.99,
+    "stock": 50
+  }
+]

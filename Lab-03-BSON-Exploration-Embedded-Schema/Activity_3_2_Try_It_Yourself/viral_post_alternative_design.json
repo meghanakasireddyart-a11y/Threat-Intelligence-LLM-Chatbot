@@ -1,0 +1,81 @@
+{
+  "pattern": "Hybrid Subset Pattern for Viral Posts",
+  "post_document": {
+    "_id": {
+      "$oid": "6afd6c07fbf6a57cc599d5bc"
+    },
+    "title": "Scaling Beyond 1 Million Ops/sec: MongoDB Architectural Blueprint",
+    "slug": "scaling-beyond-1m-ops-sec",
+    "author": "Chief Database Architect",
+    "content": "Full in-depth engineering analysis of horizontally scaled clusters...",
+    "tags": [
+      "nosql",
+      "scaling",
+      "architecture",
+      "wiredtiger"
+    ],
+    "comment_count": 10000,
+    "recent_comments": [
+      {
+        "comment_id": "comm_top_1",
+        "author": "expert_user_1",
+        "text": "Top highlighted insight #1 discussing scaling benchmarks.",
+        "created_at": {
+          "$date": "2026-11-18T02:12:39.544Z"
+        },
+        "likes": 45
+      },
+      {
+        "comment_id": "comm_top_2",
+        "author": "expert_user_2",
+        "text": "Top highlighted insight #2 discussing scaling benchmarks.",
+        "created_at": {
+          "$date": "2026-11-18T03:12:39.544Z"
+        },
+        "likes": 40
+      },
+      {
+        "comment_id": "comm_top_3",
+        "author": "expert_user_3",
+        "text": "Top highlighted insight #3 discussing scaling benchmarks.",
+        "created_at": {
+          "$date": "2026-11-18T04:12:39.544Z"
+        },
+        "likes": 35
+      },
+      {
+        "comment_id": "comm_top_4",
+        "author": "expert_user_4",
+        "text": "Top highlighted insight #4 discussing scaling benchmarks.",
+        "created_at": {
+          "$date": "2026-11-18T05:12:39.544Z"
+        },
+        "likes": 30
+      },
+      {
+        "comment_id": "comm_top_5",
+        "author": "expert_user_5",
+        "text": "Top highlighted insight #5 discussing scaling benchmarks.",
+        "created_at": {
+          "$date": "2026-11-18T06:12:39.544Z"
+        },
+        "likes": 25
+      }
+    ]
+  },
+  "sample_archive_comment": {
+    "post_id": {
+      "$oid": "6afd6c07fbf6a57cc599d5bc"
+    },
+    "comment_index": 1,
+    "author": "reader_1",
+    "text": "Detailed feedback on section 2 regarding cache eviction and sharding.",
+    "created_at": {
+      "$date": "2026-11-16T09:42:39.544Z"
+    },
+    "likes": 1,
+    "_id": {
+      "$oid": "6afd6c07fbf6a57cc599d5bd"
+    }
+  }
+}

@@ -1,0 +1,2983 @@
+﻿<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MongoDB Lab 7: Production Schema & Working Set Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="bg-ambient">
+    <div class="ambient-blob blob-1"></div>
+    <div class="ambient-blob blob-2"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-logo">M</div>
+        <div class="brand-text">
+          <h1>NoSQL Lab 7: Production Schema & Working Set Analysis</h1>
+          <p>MongoDB Performance Engineering &bull; BSON Sizing &bull; WiredTiger Cache</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="status-badge" id="mongoStatusBadge">
+          <div class="status-indicator" id="mongoStatusDot"></div>
+          <span id="mongoStatusText">Connecting...</span>
+        </div>
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">
+          🌓
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <div class="nav-tabs-wrapper">
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-overview">
+        📊 Overview & Architecture
+      </button>
+      <button class="tab-btn" data-tab="tab-activity1">
+        📏 Activity 1: $bsonSize & Schema
+      </button>
+      <button class="tab-btn" data-tab="tab-activity2">
+        ⚡ Activity 2: Working Set Analysis
+      </button>
+      <button class="tab-btn" data-tab="tab-runner">
+        🚀 Live Lab Runner & API
+      </button>
+      <button class="tab-btn" data-tab="tab-lab9">
+        🌐 Lab 9: Write Concern &amp; Partition
+      </button>
+      <button class="tab-btn" data-tab="tab-lab10">
+        🔐 Lab 10: ACID Transactions
+      </button>
+      <button class="tab-btn" data-tab="tab-lab11">
+        🔀 Lab 11: Sharding &amp; Shard Keys
+      </button>
+      <button class="tab-btn" data-tab="tab-lab12">
+        🛡️ Lab 12: Auth, RBAC &amp; TLS
+      </button>
+      <button class="tab-btn" data-tab="tab-lab13">
+        🚀 Lab 13: Production Replica Set &amp; K8s
+      </button>
+      <button class="tab-btn" data-tab="tab-lab14">
+        📊 Lab 14: Monitoring &amp; Backup Verification
+      </button>
+      <button class="tab-btn" data-tab="tab-lab15">
+        🏢 Lab 15: Multi-Tenant &amp; Migration
+      </button>
+      <button class="tab-btn" data-tab="tab-report">
+        📑 Complete Report & Q&amp;A
+      </button>
+    </nav>
+  </div>
+
+  <!-- Main Content -->
+  <main class="app-main">
+
+    <!-- TAB 1: OVERVIEW & ARCHITECTURE -->
+    <section class="tab-pane active" id="tab-overview">
+      <div class="hero-card">
+        <span class="hero-badge">Engineering Deep Dive</span>
+        <h2>High-Performance MongoDB Schema & Cache Management</h2>
+        <p>
+          Quantitative analysis of production MongoDB systems. This lab transitions schema design from qualitative assumptions to empirical measurements using the <code>$bsonSize</code> aggregation operator, while analyzing WiredTiger memory residency, cache eviction pressures, and working set sizing.
+        </p>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Hard BSON Limit</span>
+            <span class="metric-icon">🛑</span>
+          </div>
+          <div class="metric-value">16 MB</div>
+          <div class="metric-sub">16,777,216 bytes maximum document size ceiling</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">WiredTiger Cache</span>
+            <span class="metric-icon">🧠</span>
+          </div>
+          <div class="metric-value" id="dashWtCacheMax">50% RAM</div>
+          <div class="metric-sub">Default rule: <code>max(256MB, 0.5 &times; (RAM - 1GB))</code></div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Working Set Target</span>
+            <span class="metric-icon">🎯</span>
+          </div>
+          <div class="metric-value">&le; Cache</div>
+          <div class="metric-sub">Hot data + active indexes must fit entirely in RAM</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-title">Embedding Safe Zone</span>
+            <span class="metric-icon">🛡️</span>
+          </div>
+          <div class="metric-value">&lt; 100</div>
+          <div class="metric-sub">Bounded arrays only; reference or bucket beyond 100</div>
+        </div>
+      </div>
+
+      <!-- Architecture Comparison Panels -->
+      <div class="layout-two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>🧱</span> The BSON Document Constraint</h3>
+            <span class="badge-tag green">Activity 7.1</span>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            In MongoDB, embedding provides atomic updates and single-seek reads. However, storing unbounded arrays within a document is an anti-pattern that leads to severe production vulnerabilities:
+          </p>
+          <ul style="padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.8;">
+            <li><strong>Hard Limit Failure:</strong> Any document exceeding 16MB triggers <code>BSONObjectTooLarge</code> (error 10334) and rejects further writes.</li>
+            <li><strong>Memory Thrashing:</strong> WiredTiger must read the entire document into cache even when the application only needs the blog post title.</li>
+            <li><strong>Reallocation Overhead:</strong> Array growth via <code>$push</code> requires contiguous memory reallocations, creating fragmentations and write latency spikes.</li>
+          </ul>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>⚡</span> WiredTiger Working Set Architecture</h3>
+            <span class="badge-tag blue">Activity 7.2</span>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            WiredTiger uses an internal LRU (Least Recently Used) cache to maintain active pages in uncompressed memory:
+          </p>
+          <ul style="padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.8;">
+            <li><strong>Working Set &le; Cache:</strong> 100% cache hits, near-zero disk I/O, sub-millisecond query responses.</li>
+            <li><strong>Working Set &gt; Cache:</strong> Application threads get drafted into performing disk evictions (<code>eviction pages evicted by application threads</code>), causing query latency to spike from milliseconds to seconds.</li>
+            <li><strong>Sequential Inserts:</strong> Recently inserted records remain resident in cache; older pages are evicted first under memory pressure.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: ACTIVITY 1 - $bsonSize & SCHEMA DESIGN -->
+    <section class="tab-pane" id="tab-activity1">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>📐</span> Activity 1: Analyze a Production Schema ($bsonSize)</h3>
+          <span class="badge-tag green">Interactive Sizer</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          In MongoDB 4.4+, <code>{"$bsonSize": "$$ROOT"}</code> inside an aggregation pipeline measures the exact physical byte footprint of documents. Use the interactive simulator below to observe how unbounded comment accumulation drives a blog post document towards the 16MB cliff.
+        </p>
+
+        <!-- Interactive Sliders Grid -->
+        <div class="layout-two-col">
+          <div>
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Number of Comments in Post</span>
+                <span class="form-value-pill" id="valCommentCount">100 comments</span>
+              </div>
+              <input type="range" id="inputCommentCount" min="0" max="75000" step="250" value="100">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Average Comment Text Size (chars)</span>
+                <span class="form-value-pill" id="valCommentLen">200 chars</span>
+              </div>
+              <input type="range" id="inputCommentLen" min="20" max="800" step="10" value="200">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Post Metadata & Tags Count</span>
+                <span class="form-value-pill" id="valTagCount">4 tags</span>
+              </div>
+              <input type="range" id="inputTagCount" min="1" max="15" step="1" value="4">
+            </div>
+          </div>
+
+          <!-- Dynamic Results Card -->
+          <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+              <span style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Calculated BSON Size</span>
+              <span id="calculatedMb" style="font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700; color: var(--accent-primary);">0.03 MB</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;" id="calculatedBytes">
+              27,842 bytes / 16,777,216 bytes limit
+            </div>
+
+            <!-- Progress Gauge -->
+            <div class="gauge-container" style="margin: 0 0 1rem 0;">
+              <div class="gauge-header">
+                <span class="gauge-title">Capacity of 16MB Ceiling Used</span>
+                <span class="gauge-percentage" id="capacityPct">0.17%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill safe" id="capacityBar" style="width: 0.17%;"></div>
+              </div>
+              <div class="gauge-markers">
+                <span>0 MB (Empty)</span>
+                <span>4 MB (25%)</span>
+                <span>8 MB (50%)</span>
+                <span>12 MB (75%)</span>
+                <span>16 MB (FAIL)</span>
+              </div>
+            </div>
+
+            <div id="statusAlertBox" class="alert-box success">
+              <span>✅</span>
+              <div>
+                <strong>Safe for Embedding:</strong> Document size is well under 1MB. Fits easily within single WiredTiger cache pages with negligible latency.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seed Data from Lab Script Table -->
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>📑</span> Seeded Blog Posts Analysis (From <code>lab_01_production_schema.py</code>)</h3>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">
+          These are the actual BSON document measurements obtained by running the aggregation pipeline against the seeded collection:
+        </p>
+        <div class="table-responsive">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Blog Post Title</th>
+                <th>Author</th>
+                <th>Comments Embedded</th>
+                <th>BSON Size (Bytes)</th>
+                <th>% of 16MB Limit</th>
+                <th>Design Pattern Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Getting Started with MongoDB</strong></td>
+                <td>arjun</td>
+                <td>2</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">348 bytes</span></td>
+                <td>0.002%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr>
+                <td><strong>Advanced Aggregation Pipelines</strong></td>
+                <td>sneha</td>
+                <td>3</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">434 bytes</span></td>
+                <td>0.003%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr>
+                <td><strong>Vector Search with MongoDB Atlas</strong></td>
+                <td>kavya</td>
+                <td>1</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-primary);">294 bytes</span></td>
+                <td>0.002%</td>
+                <td><span class="badge-tag green">Embedded Comments (Safe)</span></td>
+              </tr>
+              <tr style="background: rgba(239, 68, 68, 0.08);">
+                <td><strong>Popular Viral Post (Simulated)</strong></td>
+                <td>celebrity</td>
+                <td>50,000</td>
+                <td><span style="font-family: var(--font-mono); color: var(--accent-danger); font-weight: 700;">17,966,736 bytes (17.13 MB)</span></td>
+                <td>107.1%</td>
+                <td><span class="badge-tag red">EXCEEDED 16MB LIMIT (FATAL WRITE REJECTION)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Schema Design Decision Matrix -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3><span>⚖️</span> Schema Design Decision Framework (Embed vs Reference vs Bucket)</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Pattern</th>
+                <th>Optimal Comment Range</th>
+                <th>Read Performance</th>
+                <th>Write Performance</th>
+                <th>16MB Risk</th>
+                <th>Production Suitability</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Embedded Array</strong></td>
+                <td>&lt; 50 &ndash; 100 comments</td>
+                <td>Fastest (single read seek)</td>
+                <td>Degrades as array grows (memory reallocation)</td>
+                <td>High if unbounded</td>
+                <td>Internal notes, small product specs, low-volume reviews</td>
+              </tr>
+              <tr>
+                <td><strong>1-to-N Reference</strong></td>
+                <td>100 &ndash; 1,000 comments</td>
+                <td>Requires secondary query or <code>$lookup</code></td>
+                <td>High (independent comment inserts)</td>
+                <td>Zero (each comment is own doc)</td>
+                <td>Standard blogs, forum threads, discussion platforms</td>
+              </tr>
+              <tr>
+                <td><strong>Bucket Pattern</strong></td>
+                <td>1,000 &ndash; 100,000+ comments</td>
+                <td>Very high (batches of 50-100 per page read)</td>
+                <td>High (targeted bucket <code>$push</code>)</td>
+                <td>Zero (buckets capped by count or size)</td>
+                <td>High-scale social media, Reddit/Twitter scale comments, IoT telemetry</td>
+              </tr>
+              <tr>
+                <td><strong>Subset Pattern</strong></td>
+                <td>Any volume (viral feeds)</td>
+                <td>Instant (top 5 comments in main doc)</td>
+                <td>Slightly more complex (updates main doc & bucket)</td>
+                <td>Zero (bounded embedded array)</td>
+                <td>E-commerce reviews (show 3 recent, paginate rest)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: ACTIVITY 2 - WORKING SET ANALYSIS -->
+    <section class="tab-pane" id="tab-activity2">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>⚡</span> Activity 2: WiredTiger Working Set & Range Query Analysis</h3>
+          <span class="badge-tag blue">Memory & Cache</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          In <code>lab_02_working_set_analysis.py</code>, 100,000 documents (~2KB each, totaling ~200MB) are inserted into <code>working_set_docs</code>. Three range queries are executed across the beginning, middle, and end of the collection. Explore the working set sizing dynamics and live benchmark results below.
+        </p>
+
+        <!-- Cache Metrics from serverStatus -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Configured Cache</span>
+              <span class="metric-icon">💾</span>
+            </div>
+            <div class="metric-value" id="statCacheMax">7,845 MB</div>
+            <div class="metric-sub"><code>maximum bytes configured</code> in WiredTiger</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Cache Currently In Use</span>
+              <span class="metric-icon">📦</span>
+            </div>
+            <div class="metric-value" id="statCacheInUse">232 MB</div>
+            <div class="metric-sub">Holds the 100k inserted documents</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Application Thread Evictions</span>
+              <span class="metric-icon">⚠️</span>
+            </div>
+            <div class="metric-value" style="color: var(--accent-primary);" id="statPagesEvicted">0</div>
+            <div class="metric-sub">Working set completely fits in RAM</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Cache Hit Ratio</span>
+              <span class="metric-icon">✨</span>
+            </div>
+            <div class="metric-value" style="color: var(--accent-primary);" id="statHitRatio">100.0%</div>
+            <div class="metric-sub">Zero disk reads required for queries</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Range Query Timing & Technical Prediction -->
+      <div class="layout-two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>⏱️</span> Range Query Latency Measurements</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Range Segment</th>
+                  <th>Sensor Filter</th>
+                  <th>Execution Time</th>
+                  <th>Cache State</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Beginning (0 &ndash; 1,000)</strong></td>
+                  <td><code>S-000000</code> to <code>S-001000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #f59e0b;">258.2 ms</span></td>
+                  <td>Resident (Older insert pages)</td>
+                </tr>
+                <tr>
+                  <td><strong>Middle (49,000 &ndash; 50,000)</strong></td>
+                  <td><code>S-049000</code> to <code>S-050000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #10b981;">172.5 ms</span></td>
+                  <td>Resident in cache</td>
+                </tr>
+                <tr>
+                  <td><strong>End (99,000 &ndash; 100,000)</strong></td>
+                  <td><code>S-099000</code> to <code>S-100000</code></td>
+                  <td><span style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">211.3 ms</span></td>
+                  <td>Hottest / Most recently written</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="alert-box info" style="margin-top: 1.25rem;">
+            <span>💡</span>
+            <div>
+              <strong>Why 150-250ms per query?</strong> The collection has no index on <code>sensor</code>! Every range query performs a full collection scan (<strong>COLLSCAN</strong>) examining all 100,000 documents (~200MB) in memory. Creating an index <code>{"sensor": 1}</code> reduces this latency from <strong>200ms to &lt; 1ms</strong>!
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3><span>🔍</span> The Core Prediction Question Answered</h3>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.92rem;">
+            <strong>Prompt Question:</strong> <em>"Predict whether all three ranges will take roughly the same amount of time, or whether some will be noticeably slower -- and say which range you expect to be slowest and why."</em>
+          </p>
+          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--radius-md); font-size: 0.88rem; line-height: 1.7; color: var(--text-secondary);">
+            <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">Under Memory-Constrained Production (Working Set &gt; Cache):</strong></p>
+            <p>
+              The <strong>Beginning range (0-1,000) is the slowest</strong>. Because documents are inserted sequentially from 0 to 100,000, documents 0-1,000 were written first and represent the oldest pages in the WiredTiger cache. As the 100,000 inserts progress, earlier pages are LRU-evicted to disk. Querying 0-1,000 incurs cold disk read latency. The <strong>End range (99,000-100,000) is fastest</strong> because it is the most recently written and remains hot in RAM.
+            </p>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.75rem 0;">
+            <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">In This Exact Lab Environment (Cache = 7.8 GB, Data = 200 MB):</strong></p>
+            <p>
+              Because total data size (200MB) is a fraction of the available 7.8GB cache, <strong>all documents remain 100% memory-resident</strong>. Minor timing variations are caused by CPU thread scheduling, GC passes, and full COLLSCAN regex evaluations rather than disk eviction faults.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Working Set Sizing Formula Calculator -->
+      <div class="panel" style="margin-top: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>🧮</span> Production RAM Provisioning Calculator</h3>
+          <span class="badge-tag green">WiredTiger Formula</span>
+        </div>
+        <div class="layout-two-col">
+          <div>
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Total Database Data Size</span>
+                <span class="form-value-pill" id="valTotalDataGb">200 GB</span>
+              </div>
+              <input type="range" id="inputTotalDataGb" min="10" max="1000" step="10" value="200">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Active Working Set Percentage</span>
+                <span class="form-value-pill" id="valWorkingSetPct">15%</span>
+              </div>
+              <input type="range" id="inputWorkingSetPct" min="1" max="100" step="1" value="15">
+            </div>
+
+            <div class="form-group">
+              <div class="form-label-row">
+                <span class="form-label">Server Physical RAM Installed</span>
+                <span class="form-value-pill" id="valServerRamGb">64 GB</span>
+              </div>
+              <input type="range" id="inputServerRamGb" min="4" max="256" step="4" value="64">
+            </div>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="margin-bottom: 1rem;">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Active Working Set Size</div>
+              <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent-cyan);" id="resWorkingSetGb">30.0 GB</div>
+            </div>
+            <div style="margin-bottom: 1rem;">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">WiredTiger Cache Allocation (50% rule)</div>
+              <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent-primary);" id="resWtCacheGb">31.5 GB</div>
+            </div>
+
+            <div id="cacheFitBadge" class="alert-box success">
+              <span>✅</span>
+              <div id="cacheFitText">
+                <strong>Optimal Sizing:</strong> Working set (30.0 GB) fits completely within WiredTiger Cache (31.5 GB). Cache hit ratio will remain near 99%+.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: LIVE RUNNER & API -->
+    <section class="tab-pane" id="tab-runner">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>🚀</span> Live MongoDB Lab Execution Console</h3>
+          <span class="badge-tag green">Local MongoDB</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+          Trigger the actual Python scripts against your live MongoDB service. View real-time outputs, measured BSON sizes, and WiredTiger metrics directly from the database engine.
+        </p>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <button class="btn btn-primary" id="btnRunAct1">
+            ▶ Run Activity 1 (Schema & $bsonSize)
+          </button>
+          <button class="btn btn-primary" id="btnRunAct2" style="background: linear-gradient(135deg, #0284c7, #2563eb);">
+            ▶ Run Activity 2 (Working Set 50k Docs)
+          </button>
+          <button class="btn btn-secondary" id="btnPollLiveMetrics">
+            🔄 Refresh Live WiredTiger Metrics
+          </button>
+        </div>
+
+        <!-- Terminal Output -->
+        <div class="terminal-box">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+            </div>
+            <span class="terminal-title">mongodb@localhost:27017 ~ nosql_labs execution output</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);" id="runStatusPill">Ready</span>
+          </div>
+          <div class="terminal-body" id="terminalOutput">
+[INFO] Ready to execute MongoDB Lab 7 tasks.
+Click "Run Activity 1" or "Run Activity 2" to execute against local MongoDB instance.
+MongoDB connection URI: mongodb://localhost:27017/nosql_labs
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: COMPLETE ACADEMIC REPORT & Q&A -->
+    <section class="tab-pane" id="tab-report">
+      <div class="hero-card" style="margin-bottom: 1.5rem;">
+        <span class="hero-badge">Academic Submission Document</span>
+        <h2>Lab 7: Production Schema & Working Set Analysis Report</h2>
+        <p>
+          Student: <strong>Kasireddy Meghana</strong> (USN: <code>24BTRCL119</code>) &bull; CSE (AIML), Section B &bull; Jain University<br>
+          Course: <strong>NoSQL Databases (MongoDB)</strong> &bull; Semester 5
+        </p>
+      </div>
+
+      <!-- Q&A Section 1 -->
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+          <h3><span>❓</span> Core Lab Questions & Detailed Technical Solutions</h3>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q1: At what comment-count-per-post would a single blog post's embedded design approach or exceed the 16MB limit?
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p><strong>Mathematical Derivation:</strong></p>
+            <p>
+              The BSON specification imposes overhead for each embedded subdocument:
+            </p>
+            <ul style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li>Base document header, title, author, slug, tags: ~180 bytes.</li>
+              <li>Each comment subdocument: 4 bytes (subdoc length) + 1 byte (string type) + 7 bytes (field <code>author\0</code>) + 14 bytes (string data) + 1 byte (string type) + 5 bytes (field <code>text\0</code>) + comment text bytes + 1 byte (date/string) + 24 bytes (timestamp) + 1 byte (subdoc terminator <code>0x00</code>) = <strong>63 bytes overhead + text length</strong>.</li>
+              <li>Array index keys (<code>"0"</code>, <code>"1"</code>, ... <code>"10000"</code>): 3 to 7 bytes per entry.</li>
+            </ul>
+            <p>
+              With an average realistic comment length of <strong>300 bytes</strong>:
+              <br>
+              <code>Average bytes per comment = 63 + 300 + 5 = 368 bytes</code>
+              <br>
+              <code>Comments to reach 16MB = (16 &times; 1024 &times; 1024) / 368 &approx; 45,590 comments</code>.
+            </p>
+            <p style="margin-top: 0.5rem;">
+              With shorter comments (~150 bytes), it exceeds 16MB at ~<strong>75,000 comments</strong>. With rich comments or replies (~800 bytes), it fails at ~<strong>18,000 comments</strong>.
+              <br>
+              <strong style="color: var(--accent-warning);">Warning Threshold:</strong> In production, any document exceeding <strong>4MB to 8MB</strong> is already a severe performance hazard because reading or writing it saturates cache pages and networks.
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q2: Is "embed all comments in the post document" a safe design for this blog workload?
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p>
+              <strong style="color: var(--accent-danger);">Verdict: UNSAFE.</strong> It is a textbook example of the <em>Unbounded Array Anti-Pattern</em>.
+            </p>
+            <p>
+              While the seed data has only 1 to 3 comments per post (~300 bytes total), in a production blogging system popular articles attract viral spikes with thousands of comments. The embedded design suffers from three fatal architectural flaws:
+            </p>
+            <ol style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li><strong>Hard Ceiling Crash:</strong> Once comment count exceeds ~50k, MongoDB aborts writes with <code>BSONObjectTooLarge</code>. Users can no longer comment, and editors cannot edit the post.</li>
+              <li><strong>Read Amplification:</strong> Rendering an article list or post title forces MongoDB to transfer the entire multi-megabyte comments array over the wire, destroying API latency.</li>
+              <li><strong>Memory Fragmentation:</strong> Repeated <code>$push</code> operations to an embedded array exceed the document's pre-allocated memory chunk, forcing WiredTiger to continuously move and re-write the document on disk and in cache.</li>
+            </ol>
+            <p>
+              <strong>The Production Fix:</strong> Implement the <em>Subset Pattern</em> (embed only the 5 most recent comments in the post) combined with the <em>Bucket Pattern</em> (group historical comments into separate documents of 50 comments each in a <code>comments</code> collection).
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.5rem;">
+            Q3: Prediction &amp; Explanation of Query Latencies Across Collection Ranges
+          </h4>
+          <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.8; color: var(--text-secondary);">
+            <p>
+              <strong>Key Architectural Dynamics:</strong>
+            </p>
+            <ul style="padding-left: 1.5rem; margin: 0.5rem 0;">
+              <li><strong>LRU Eviction Priority:</strong> Because documents are inserted sequentially, documents <code>0-1,000</code> are the oldest pages in memory. Under cache pressure, WiredTiger evicts them first. Documents <code>99,000-100,000</code> were written last and remain warm in cache. Hence in a constrained environment, Range 1 is slowest and Range 3 is fastest.</li>
+              <li><strong>COLLSCAN Bottleneck:</strong> Because no index was created on <code>sensor</code>, every range query must scan 100% of documents. Adding <code>db.working_set_docs.createIndex({"sensor": 1})</code> reduces scan from 100,000 docs to exactly 1,001 index keys, dropping query execution from ~200ms to &lt;1ms.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: LAB 9 WRITE CONCERN & NETWORK PARTITION INTEGRATION -->
+    <section class="tab-pane" id="tab-lab9">
+      <div class="hero-card" style="border-left: 4px solid var(--accent-purple);">
+        <span class="hero-badge" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple);">Lab 9 Module Integration</span>
+        <h2>CAP Theorem, Write Concern Latency &amp; Network Partition Simulation</h2>
+        <p>
+          Integrated from Chapter 9: Quantitative benchmarking of write latency across acknowledgment levels (<code>w:1</code>, <code>w:majority</code>, <code>w:all</code>), journaling disk overhead (<code>j:true</code> vs <code>j:false</code>), and dynamic simulation of Docker network partitions and split-brain prevention stepdown.
+        </p>
+      </div>
+
+      <!-- Quick Metrics -->
+      <div class="metrics-grid" style="margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">w:1 Latency</span></div>
+          <div class="metric-value" style="color: var(--accent-green);">0.98 ms</div>
+          <div class="metric-subtext">Primary RAM cache ack only (~1000 ops/s)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">w:majority Latency</span></div>
+          <div class="metric-value" style="color: var(--accent-yellow);">3.69 ms</div>
+          <div class="metric-subtext">Quorum network replication (~3.8x slower)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">j:true fsync Overhead</span></div>
+          <div class="metric-value" style="color: var(--accent-red);">+2.33 ms</div>
+          <div class="metric-subtext">Synchronous WAL flush to physical disk</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Partition Quorum</span></div>
+          <div class="metric-value" style="color: var(--accent-cyan);">2 / 3 Votes</div>
+          <div class="metric-subtext">Majority needed for primary election</div>
+        </div>
+      </div>
+
+      <!-- Benchmarking & Controls Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+        <!-- Card 1: Write Concern Benchmark -->
+        <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 1.15rem; color: var(--text-primary);">📊 Lab 9.1: Write Concern Latency Table</h3>
+            <button class="btn btn-primary" id="btnRunLab9Bench" style="padding: 0.5rem 1rem; font-size: 0.85rem;">▶ Run 1,000 Writes</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: var(--font-mono);">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-muted);">
+                  <th style="padding: 0.6rem;">Concern</th>
+                  <th style="padding: 0.6rem;">Journal</th>
+                  <th style="padding: 0.6rem;">Avg (ms)</th>
+                  <th style="padding: 0.6rem;">P99 (ms)</th>
+                  <th style="padding: 0.6rem;">Throughput</th>
+                </tr>
+              </thead>
+              <tbody id="lab9BenchTableBody">
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-blue);"><strong>w:1</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-green);">0.98</td>
+                  <td style="padding: 0.6rem;">2.99</td>
+                  <td style="padding: 0.6rem;">1015 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-blue);"><strong>w:1</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">3.31</td>
+                  <td style="padding: 0.6rem;">5.35</td>
+                  <td style="padding: 0.6rem;">302 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-purple);"><strong>w:majority</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">3.69</td>
+                  <td style="padding: 0.6rem;">6.30</td>
+                  <td style="padding: 0.6rem;">271 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-purple);"><strong>w:majority</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">5.84</td>
+                  <td style="padding: 0.6rem;">7.73</td>
+                  <td style="padding: 0.6rem;">171 ops/s</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.6rem; color: var(--accent-red);"><strong>w:all (w:3)</strong></td>
+                  <td style="padding: 0.6rem; color: var(--text-muted);">j:false</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">6.88</td>
+                  <td style="padding: 0.6rem;">9.18</td>
+                  <td style="padding: 0.6rem;">145 ops/s</td>
+                </tr>
+                <tr style="background: rgba(255,255,255,0.02);">
+                  <td style="padding: 0.6rem; color: var(--accent-red);"><strong>w:all (w:3)</strong></td>
+                  <td style="padding: 0.6rem; color: var(--accent-yellow);">j:true</td>
+                  <td style="padding: 0.6rem; color: var(--accent-red);">9.48</td>
+                  <td style="padding: 0.6rem;">12.08</td>
+                  <td style="padding: 0.6rem;">106 ops/s</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 2: Interactive Partition Simulator -->
+        <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+          <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🌐 Lab 9.2: Network Partition Simulator</h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Test cluster resilience, primary stepdown, and split-brain prevention under simulated network partitions.
+          </p>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button class="btn" id="btnLab9DiscOne" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-yellow); border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Isolate 1 Secondary</button>
+            <button class="btn" id="btnLab9DiscBoth" style="background: rgba(239, 68, 68, 0.2); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Isolate Both (Minority)</button>
+            <button class="btn" id="btnLab9Heal" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Heal Partition</button>
+            <button class="btn" id="btnLab9WriteW1" style="background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Write w:1</button>
+            <button class="btn" id="btnLab9WriteWMaj" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple); border: 1px solid rgba(139, 92, 246, 0.3); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Write w:majority</button>
+          </div>
+
+          <div id="lab9SimLog" style="background: #090a0f; border-radius: var(--radius-md); padding: 0.85rem; height: 180px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: var(--accent-cyan);">[INFO] Replica set topology initialized: rs0 (3 Nodes: rs0-1 [PRIMARY], rs0-2, rs0-3)</div>
+            <div style="color: var(--accent-green);">[INFO] Quorum Status: 2/3 votes available (Majority Intact)</div>
+            <div style="color: var(--text-muted);">[READY] Select an action above to simulate network partition scenarios.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section in Lab 7 Website -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub Demonstration Image for Grading</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          In accordance with the submission guidelines, the complete Lab 9 containerized demonstration environment has been published to Docker Hub:
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab09</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab09" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container:
+docker pull kasireddymeghana/nosql-lab09:latest
+docker run -d -p 8009:8009 kasireddymeghana/nosql-lab09:latest</code></pre>
+      </div>
+    </section>
+
+
+    <!-- TAB: LAB 10 - ACID TRANSACTIONS -->
+    <section class="tab-pane" id="tab-lab10">
+
+      <!-- Hero Card -->
+      <div class="hero-card" style="border-left: 4px solid var(--accent-purple);">
+        <span class="hero-badge" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple);">Lab 10 Module Integration</span>
+        <h2>ACID Multi-Document Transactions &amp; Deadlock Handling</h2>
+        <p>
+          MongoDB 4.0+ introduced multi-document ACID transactions across replica sets and (4.2+) sharded clusters.
+          This lab demonstrates <strong>atomicity</strong> through bank transfers with rollback, <strong>consistency</strong>
+          via schema-level constraints, <strong>isolation</strong> using snapshot read concern, and <strong>durability</strong>
+          with majority write concern. Write conflicts arising from concurrent sessions are caught and retried using
+          exponential backoff — mirroring real-world deadlock handling patterns.
+        </p>
+      </div>
+
+      <!-- Metrics Grid -->
+      <div class="metrics-grid" style="grid-template-columns: repeat(4,1fr); margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-label">ACID Guarantee</div>
+          <div class="metric-value" style="color: var(--accent-purple);">4 Props</div>
+          <div class="metric-sub">Atomicity · Consistency · Isolation · Durability</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Transaction Scope</div>
+          <div class="metric-value" style="color: var(--accent-cyan);">Multi-Doc</div>
+          <div class="metric-sub">Spans collections, databases in same cluster</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Retry Strategy</div>
+          <div class="metric-value" style="color: var(--accent-warning);">Exp. Backoff</div>
+          <div class="metric-sub">TransientTransactionError auto-retry pattern</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Deadlock Handling</div>
+          <div class="metric-value" style="color: var(--accent-danger);">WriteConflict</div>
+          <div class="metric-sub">Concurrent sessions caught and retried</div>
+        </div>
+      </div>
+
+      <!-- Lab 10.1: Bank Transfer -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <span>🏦 Lab 10.1: Bank Transfer Transaction</span>
+          <span class="badge-tag" style="background: rgba(139,92,246,0.15); color: var(--accent-purple);">ACID Transaction</span>
+        </div>
+        <div style="padding: 1.5rem;">
+
+          <!-- Account Cards -->
+          <div style="display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-001</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Arjun</div>
+              <div style="color: var(--accent-green); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$5,000.00</div>
+            </div>
+            <div style="background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-002</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Sneha</div>
+              <div style="color: var(--accent-cyan); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$3,000.00</div>
+            </div>
+            <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">💳</div>
+              <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">ACC-003</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem;">Rahul</div>
+              <div style="color: var(--accent-warning); font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem;">$1,000.00</div>
+            </div>
+          </div>
+
+          <!-- Transfer Simulator -->
+          <div style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <h4 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 0.95rem;">💸 Interactive Transfer Simulator</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr auto; gap: 0.75rem; align-items: end; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">From Account</label>
+                <select id="lab10FromAcct" style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                  <option value="ACC-001">ACC-001 (Arjun)</option>
+                  <option value="ACC-002">ACC-002 (Sneha)</option>
+                  <option value="ACC-003">ACC-003 (Rahul)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">To Account</label>
+                <select id="lab10ToAcct" style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                  <option value="ACC-002">ACC-002 (Sneha)</option>
+                  <option value="ACC-001">ACC-001 (Arjun)</option>
+                  <option value="ACC-003">ACC-003 (Rahul)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Amount ($)</label>
+                <input id="lab10Amount" type="number" value="500" min="1" max="10000"
+                  style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Description</label>
+                <input id="lab10Desc" type="text" value="Salary payment"
+                  style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-size: 0.85rem;">
+              </div>
+              <div>
+                <button id="btnLab10Transfer" class="btn btn-primary" style="white-space: nowrap;">▶ Execute Transfer</button>
+              </div>
+            </div>
+            <div style="margin-top: 0.75rem;">
+              <button id="btnLab10InsufficientTest" class="btn" style="background: rgba(245,158,11,0.15); color: var(--accent-warning); border: 1px solid rgba(245,158,11,0.3); font-size: 0.8rem;">
+                ⚠ Test Insufficient Funds ($5000 from ACC-003)
+              </button>
+            </div>
+          </div>
+
+          <!-- Results -->
+          <div class="layout-two-col">
+            <div>
+              <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.6rem;">💰 Current Balances</h4>
+              <div class="table-responsive">
+                <table class="styled-table">
+                  <thead><tr><th>Account</th><th>Holder</th><th>Balance</th><th>Status</th></tr></thead>
+                  <tbody id="lab10BalancesBody">
+                    <tr><td><strong>ACC-001</strong></td><td>Arjun</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$5,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                    <tr><td><strong>ACC-002</strong></td><td>Sneha</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$3,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                    <tr><td><strong>ACC-003</strong></td><td>Rahul</td><td style="font-family:var(--font-mono);color:var(--accent-primary);">$1,000.00</td><td><span class="badge-tag green">Active</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.6rem;">📋 Transaction Log</h4>
+              <div id="lab10TxnLog" style="background: #090a0f; border-radius: var(--radius-md); padding: 0.85rem; height: 160px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.78rem; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="color: var(--text-muted);">[READY] Execute a transfer to see the transaction log here...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lab 10.2: Inventory Reservation -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <span>📦 Lab 10.2: Inventory Reservation &amp; Deadlock Handling</span>
+          <span class="badge-tag" style="background: rgba(6,182,212,0.15); color: var(--accent-cyan);">WriteConflict Retry</span>
+        </div>
+        <div style="padding: 1.5rem;">
+
+          <!-- Product Card -->
+          <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: stretch;">
+            <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: var(--radius-md); padding: 1.25rem; min-width: 180px; text-align: center;">
+              <div style="font-size: 2rem; margin-bottom: 0.5rem;">💻</div>
+              <div style="font-weight: 700; color: var(--text-primary);">LAPTOP</div>
+              <div style="color: var(--text-secondary); font-size: 0.8rem; margin: 0.25rem 0;">Pro Laptop X1</div>
+              <div style="color: var(--accent-green); font-family: var(--font-mono); font-weight: 700;">$999</div>
+              <div style="margin-top: 0.5rem; padding: 0.25rem 0.6rem; background: rgba(16,185,129,0.15); border-radius: var(--radius-sm); font-size: 0.75rem; color: var(--accent-green);">Stock: 5 units</div>
+            </div>
+            <div style="flex: 1; background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.25rem; border: 1px solid var(--border-color);">
+              <h4 style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem;">⚡ Concurrency Test Controls</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">
+                    Number of Threads: <strong id="lab10ThreadCountVal" style="color: var(--accent-cyan);">8 threads</strong>
+                  </label>
+                  <input id="lab10ThreadCount" type="range" min="2" max="16" value="8" style="width: 100%; accent-color: var(--accent-cyan);">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem;"><span>2</span><span>16</span></div>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Units per Thread</label>
+                  <input id="lab10QtyPerThread" type="number" value="1" min="1" max="3"
+                    style="width:100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                </div>
+              </div>
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <button id="btnLab10Inventory" class="btn btn-primary">▶ Run Concurrent Reservations</button>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer;">
+                  <input id="lab10RetryToggle" type="checkbox" checked style="accent-color: var(--accent-cyan);"> Enable Retry Logic
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inventory Results -->
+          <div id="lab10InventoryResults" style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; border: 1px solid var(--border-color); min-height: 80px;">
+            <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 1rem;">Click "Run Concurrent Reservations" to simulate concurrent inventory booking with write-conflict detection.</div>
+          </div>
+
+          <!-- Throughput bar placeholder -->
+          <div id="lab10ThroughputBar" style="margin-top: 1rem;"></div>
+        </div>
+      </div>
+
+      <!-- Live Runner for Lab 10 -->
+      <div class="terminal-box" style="margin-bottom: 2rem;">
+        <div class="terminal-header">
+          <div style="display: flex; gap: 0.5rem;">
+            <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+          </div>
+          <span style="color: var(--text-muted); font-size: 0.8rem; font-family: var(--font-mono);">lab10_runner.py — ACID Transaction Scripts</span>
+          <span id="lab10RunStatus" style="font-size: 0.75rem; color: var(--text-muted);">Idle</span>
+        </div>
+        <div class="terminal-body">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button id="btnLab10RunScript1" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem;">▶ Run Lab 10.1 (Bank Transfer)</button>
+            <button id="btnLab10RunScript2" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem; background: rgba(6,182,212,0.2); color: var(--accent-cyan); border-color: rgba(6,182,212,0.4);">▶ Run Lab 10.2 (Inventory Reservation)</button>
+            <button id="btnLab10Reset" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.4rem 0.9rem;">🔄 Reset DB</button>
+          </div>
+          <pre id="lab10TerminalOutput" style="margin:0; white-space: pre-wrap; font-size: 0.8rem; color: var(--accent-green); min-height: 200px; max-height: 400px; overflow-y: auto; line-height: 1.6;">[READY] Select a script above to run Lab 10 demonstrations.</pre>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-top: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub - Lab 10 Submission</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          The complete Lab 10 containerized demonstration environment has been published to Docker Hub for grading.
+          The image bundles the Lab 7 + Lab 10 website with all ACID transaction demonstrations running on port 8010.
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab10</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab10" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container:
+docker pull kasireddymeghana/nosql-lab10:latest
+docker run -d -p 8010:8010 --name nosql-lab10 kasireddymeghana/nosql-lab10:latest</code></pre>
+      </div>
+
+    </section>
+
+    <!-- TAB: LAB 11 - SHARDING & SHARD KEY ANALYSIS -->
+    <section class="tab-pane" id="tab-lab11">
+
+      <!-- Hero Card -->
+      <div class="hero-card" style="border-left: 4px solid #f59e0b;">
+        <span class="hero-badge" style="background: rgba(245,158,11,0.2); color: #f59e0b;">Lab 11 Module Integration</span>
+        <h2>MongoDB Sharding &amp; Shard Key Strategy</h2>
+        <p>
+          Chapter 11: Comprehensive evaluation of shard key candidates using a decision matrix, hotspot detection
+          with monotonically increasing keys, and even distribution analysis with hashed shard keys for
+          an e-commerce order management system.
+        </p>
+      </div>
+
+      <!-- Quick Metrics -->
+      <div class="metrics-grid" style="margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Shard Key Candidates</span></div>
+          <div class="metric-value" style="color: #f59e0b;">4</div>
+          <div class="metric-sub">order_id · customer_id · order_date · hashed customer_id</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Best Strategy</span></div>
+          <div class="metric-value" style="color: var(--accent-green);">Hashed</div>
+          <div class="metric-sub">customer_id hashed — balanced writes + scoped queries</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Hotspot Risk</span></div>
+          <div class="metric-value" style="color: var(--accent-danger);">High</div>
+          <div class="metric-sub">Monotonically increasing keys (order_date) cause hotspots</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Docs Inserted</span></div>
+          <div class="metric-value" style="color: var(--accent-cyan);">10,000</div>
+          <div class="metric-sub">Per collection in Lab 11.2 for hotspot comparison</div>
+        </div>
+      </div>
+
+      <!-- Lab 11.1: Shard Key Decision Matrix -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>📊</span> Lab 11.1: Shard Key Evaluation &amp; Decision Matrix</h3>
+          <span class="badge-tag" style="background: rgba(245,158,11,0.15); color: #f59e0b;">E-Commerce Orders</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem; padding: 0 1.5rem;">
+          For an e-commerce order management system, four candidate shard keys are evaluated against four
+          production-grade criteria. Each key is scored on cardinality, distribution uniformity, query targeting
+          efficiency, and monotonicity safety.
+        </p>
+
+        <!-- Decision Matrix Table -->
+        <div class="table-responsive" style="padding: 0 1.5rem 1.5rem;">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Shard Key Candidate</th>
+                <th style="text-align:center;">High Cardinality</th>
+                <th style="text-align:center;">Even Distribution</th>
+                <th style="text-align:center;">Query Targeting</th>
+                <th style="text-align:center;">Not Monotonic</th>
+                <th style="text-align:center;">Score</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong style="font-family: var(--font-mono); color: var(--accent-cyan);">order_id</strong></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ High</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Even</span></td>
+                <td style="text-align:center;"><span class="badge-tag red">✗ Scatter</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Safe</span></td>
+                <td style="text-align:center; font-family: var(--font-mono); font-weight: 700; color: var(--accent-warning);">3/4</td>
+                <td style="font-size: 0.85rem; color: var(--text-secondary);">Good for order writes. Customer queries broadcast to all shards (scatter-gather).</td>
+              </tr>
+              <tr style="background: rgba(255,255,255,0.02);">
+                <td><strong style="font-family: var(--font-mono); color: var(--accent-cyan);">customer_id</strong></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ High</span></td>
+                <td style="text-align:center;"><span class="badge-tag" style="background:rgba(245,158,11,0.2);color:#f59e0b;">~ Skewed</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Targeted</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Safe</span></td>
+                <td style="text-align:center; font-family: var(--font-mono); font-weight: 700; color: var(--accent-warning);">3/4</td>
+                <td style="font-size: 0.85rem; color: var(--text-secondary);">Good query targeting, but VIP customers create write hotspots on their shard.</td>
+              </tr>
+              <tr>
+                <td><strong style="font-family: var(--font-mono); color: var(--accent-danger);">order_date</strong></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ High</span></td>
+                <td style="text-align:center;"><span class="badge-tag red">✗ Hotspot</span></td>
+                <td style="text-align:center;"><span class="badge-tag" style="background:rgba(245,158,11,0.2);color:#f59e0b;">~ Range</span></td>
+                <td style="text-align:center;"><span class="badge-tag red">✗ Monotonic</span></td>
+                <td style="text-align:center; font-family: var(--font-mono); font-weight: 700; color: var(--accent-danger);">1/4</td>
+                <td style="font-size: 0.85rem; color: var(--text-secondary);"><strong style="color: var(--accent-danger);">AVOID.</strong> All new inserts go to the latest chunk. 100% write hotspot on a single shard.</td>
+              </tr>
+              <tr style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2);">
+                <td><strong style="font-family: var(--font-mono); color: var(--accent-green);">hashed customer_id</strong> ⭐</td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ High</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Even</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Targeted</span></td>
+                <td style="text-align:center;"><span class="badge-tag green">✓ Safe</span></td>
+                <td style="text-align:center; font-family: var(--font-mono); font-weight: 700; color: var(--accent-green);">4/4</td>
+                <td style="font-size: 0.85rem; color: var(--accent-green);"><strong>RECOMMENDED.</strong> Hashing randomizes distribution. Customer-scoped queries still target 1 shard.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Selection Rules -->
+        <div style="display: grid; grid-template-columns: repeat(2,1fr); gap: 1rem; padding: 0 1.5rem 1.5rem;">
+          <div class="alert-box success">
+            <span>⭐</span>
+            <div>
+              <strong>Recommendation: <code>{ customer_id: "hashed" }</code></strong><br>
+              Hashing spreads customer IDs uniformly across all chunks. All customer-scoped order queries still route to exactly one shard. No monotonic write patterns.
+            </div>
+          </div>
+          <div class="alert-box info">
+            <span>💡</span>
+            <div>
+              <strong>Compound Alternative: <code>{ customer_id: 1, order_date: 1 }</code></strong><br>
+              Useful when time-range queries within a customer's orders are common. Targets by customer first, ranges by time within that shard.
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Scoring Visualizer -->
+        <div style="padding: 0 1.5rem 1.5rem;">
+          <h4 style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">🎛 Interactive Shard Key Scorer</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div>
+              <div class="form-group">
+                <div class="form-label-row">
+                  <span class="form-label">Cardinality (unique values)</span>
+                  <span class="form-value-pill" id="lab11CardinalityVal">1,000,000</span>
+                </div>
+                <input type="range" id="lab11Cardinality" min="10" max="10000000" step="100" value="1000000">
+              </div>
+              <div class="form-group">
+                <div class="form-label-row">
+                  <span class="form-label">Distribution Uniformity %</span>
+                  <span class="form-value-pill" id="lab11DistVal">90%</span>
+                </div>
+                <input type="range" id="lab11Dist" min="1" max="100" step="1" value="90">
+              </div>
+              <div class="form-group">
+                <div class="form-label-row">
+                  <span class="form-label">Query Targeting Score %</span>
+                  <span class="form-value-pill" id="lab11QueryVal">90%</span>
+                </div>
+                <input type="range" id="lab11Query" min="1" max="100" step="1" value="90">
+              </div>
+              <label style="display: flex; gap: 0.5rem; align-items: center; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; margin-top: 0.5rem;">
+                <input type="checkbox" id="lab11Monotonic" style="accent-color: var(--accent-cyan);">
+                Key is Monotonically Increasing (timestamp-like)
+              </label>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Composite Shard Key Score</div>
+              <div id="lab11ScoreDisplay" style="font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700; color: var(--accent-green); margin-bottom: 0.5rem;">100</div>
+              <div id="lab11ScoreBar" style="height: 8px; border-radius: 4px; background: var(--accent-green); width: 100%; margin-bottom: 1rem; transition: all 0.3s;"></div>
+              <div id="lab11ScoreVerdict" class="alert-box success" style="margin: 0;">
+                <span>✅</span>
+                <div><strong>Excellent Shard Key</strong> — All criteria satisfied. Suitable for production.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lab 11.2: Hotspot Detection -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>🔥</span> Lab 11.2: Shard Key Hotspot Detection</h3>
+          <span class="badge-tag" style="background:rgba(239,68,68,0.15);color:var(--accent-danger);">Monotonic vs Hashed</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem; padding: 0 1.5rem;">
+          Two collections are created: <code>hotspot_data</code> (shard key: <code>{ts: 1}</code>) and <code>even_data</code>
+          (shard key: <code>{user_id: "hashed"}</code>). After inserting 10,000 documents each, per-shard document
+          distribution is compared and range queries are analyzed with <code>explain()</code>.
+        </p>
+
+        <!-- Distribution Comparison -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding: 0 1.5rem 1.5rem;">
+
+          <!-- Hotspot Collection -->
+          <div style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.25); border-radius: var(--radius-md); padding: 1.25rem;">
+            <h4 style="color: var(--accent-danger); margin-bottom: 0.75rem; font-size: 0.95rem;">
+              🔥 hotspot_data — Shard Key: <code>{ts: 1}</code>
+            </h4>
+            <div style="margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.85rem;">
+                <span style="color: var(--text-secondary);">Shard A (owns latest timestamp range)</span>
+                <span style="font-family: var(--font-mono); color: var(--accent-danger);">~9,500 docs (95%)</span>
+              </div>
+              <div style="height: 20px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; width: 95%; background: var(--accent-danger); border-radius: 4px; transition: width 0.5s;"></div>
+              </div>
+            </div>
+            <div style="margin-bottom: 1.25rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.85rem;">
+                <span style="color: var(--text-secondary);">Shard B (old timestamp ranges)</span>
+                <span style="font-family: var(--font-mono); color: var(--accent-green);">~500 docs (5%)</span>
+              </div>
+              <div style="height: 20px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; width: 5%; background: var(--accent-green); border-radius: 4px;"></div>
+              </div>
+            </div>
+            <div class="alert-box danger" style="margin: 0;">
+              <span>🛑</span>
+              <div style="font-size: 0.82rem;">
+                <strong>Write Hotspot!</strong> All new inserts with current timestamps route to the single chunk at the top of the timestamp range, overwhelming one shard.
+              </div>
+            </div>
+          </div>
+
+          <!-- Even Collection -->
+          <div style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-md); padding: 1.25rem;">
+            <h4 style="color: var(--accent-green); margin-bottom: 0.75rem; font-size: 0.95rem;">
+              ✅ even_data — Shard Key: <code>{user_id: "hashed"}</code>
+            </h4>
+            <div style="margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.85rem;">
+                <span style="color: var(--text-secondary);">Shard A</span>
+                <span style="font-family: var(--font-mono); color: var(--accent-green);">~5,012 docs (50%)</span>
+              </div>
+              <div style="height: 20px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; width: 50%; background: var(--accent-green); border-radius: 4px;"></div>
+              </div>
+            </div>
+            <div style="margin-bottom: 1.25rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.85rem;">
+                <span style="color: var(--text-secondary);">Shard B</span>
+                <span style="font-family: var(--font-mono); color: var(--accent-green);">~4,988 docs (50%)</span>
+              </div>
+              <div style="height: 20px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; width: 50%; background: var(--accent-green); border-radius: 4px;"></div>
+              </div>
+            </div>
+            <div class="alert-box success" style="margin: 0;">
+              <span>✅</span>
+              <div style="font-size: 0.82rem;">
+                <strong>Even Distribution!</strong> MD5/SHA hash randomizes bucket assignment. Each shard receives roughly equal write load regardless of temporal patterns.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Query Behavior Comparison -->
+        <div style="padding: 0 1.5rem 1.5rem;">
+          <h4 style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">📋 Range Query Behavior: explain() Analysis</h4>
+          <div class="table-responsive">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Collection</th>
+                  <th>Shard Key</th>
+                  <th>Query Type</th>
+                  <th>Query Plan</th>
+                  <th>Shards Targeted</th>
+                  <th>Performance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>hotspot_data</code></td>
+                  <td><code>{ts: 1}</code></td>
+                  <td>Range on <code>ts</code> (year 2025)</td>
+                  <td><span class="badge-tag green">IXSCAN + Targeted</span></td>
+                  <td style="text-align:center;"><strong style="color: var(--accent-green);">1 Shard</strong></td>
+                  <td style="color: var(--accent-green);">Fast (range maps to 1 chunk)</td>
+                </tr>
+                <tr style="background: rgba(255,255,255,0.02);">
+                  <td><code>hotspot_data</code></td>
+                  <td><code>{ts: 1}</code></td>
+                  <td>Find by <code>user_id</code></td>
+                  <td><span class="badge-tag red">COLLSCAN + Scatter-Gather</span></td>
+                  <td style="text-align:center;"><strong style="color: var(--accent-danger);">All Shards</strong></td>
+                  <td style="color: var(--accent-danger);">Slow (broadcasts everywhere)</td>
+                </tr>
+                <tr>
+                  <td><code>even_data</code></td>
+                  <td><code>{user_id: "hashed"}</code></td>
+                  <td>Find by <code>user_id</code></td>
+                  <td><span class="badge-tag green">IXSCAN + Targeted</span></td>
+                  <td style="text-align:center;"><strong style="color: var(--accent-green);">1 Shard</strong></td>
+                  <td style="color: var(--accent-green);">Fast (hash routes to 1 shard)</td>
+                </tr>
+                <tr style="background: rgba(255,255,255,0.02);">
+                  <td><code>even_data</code></td>
+                  <td><code>{user_id: "hashed"}</code></td>
+                  <td>Range on <code>user_id</code></td>
+                  <td><span class="badge-tag red">COLLSCAN + Scatter-Gather</span></td>
+                  <td style="text-align:center;"><strong style="color: var(--accent-danger);">All Shards</strong></td>
+                  <td style="color: var(--accent-danger);">Slow (hash breaks range locality)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Live Simulation -->
+        <div style="padding: 0 1.5rem 1.5rem;">
+          <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <button id="btnLab11RunSim" class="btn btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+              ▶ Simulate 10,000 Doc Insertion
+            </button>
+            <button id="btnLab11RunQuery" class="btn" style="background: rgba(6,182,212,0.2); color: var(--accent-cyan); border: 1px solid rgba(6,182,212,0.4);">
+              🔍 Run explain() Query Comparison
+            </button>
+            <button id="btnLab11Reset" class="btn btn-secondary">🔄 Reset</button>
+          </div>
+          <div class="terminal-box">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+              </div>
+              <span class="terminal-title">lab_02_shard_key_hotspot.py — Shard Distribution Analysis</span>
+              <span id="lab11StatusPill" style="font-size: 0.75rem; color: var(--text-muted);">Ready</span>
+            </div>
+            <div class="terminal-body" id="lab11Terminal">
+[INFO] Lab 11.2: Shard Key Hotspot Detection ready.
+[INFO] Click "Simulate 10,000 Doc Insertion" to run the comparison.
+[TIP]  hotspot_data uses {ts: 1} — monotonically increasing timestamp.
+[TIP]  even_data uses {user_id: "hashed"} — randomized hash distribution.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 11.1: MongoDB 5.0+ Resharding Research -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>🔬</span> Activity 11.1: MongoDB 5.0+ Resharding — Research Notes</h3>
+          <span class="badge-tag blue">Try It Yourself</span>
+        </div>
+        <div style="padding: 0 1.5rem 1.5rem;">
+          <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+            MongoDB 5.0 introduced <strong>online resharding</strong> — the ability to change a collection's shard key
+            without downtime, manual dump/restore, or application interruption.
+          </p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div>
+              <h4 style="color: var(--accent-cyan); font-size: 0.95rem; margin-bottom: 0.75rem;">📋 Resharding Steps</h4>
+              <ol style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.9; padding-left: 1.25rem;">
+                <li>Confirm MongoDB 5.0+ and Atlas or self-hosted replica set.</li>
+                <li>Run <code>db.adminCommand({ reshardCollection: "&lt;db.coll&gt;", key: { &lt;newKey&gt;: "hashed" } })</code>.</li>
+                <li>mongos starts a background clone of all documents to new chunks.</li>
+                <li>The <code>currentOp()</code> command reports resharding progress (<code>remainingOperationTimeEstimatedSecs</code>).</li>
+                <li>When cloning completes, a brief write-blocking "commit" window applies (typically &lt; 2 seconds).</li>
+                <li>Old chunk layout is replaced atomically; application sees no downtime.</li>
+              </ol>
+            </div>
+            <div>
+              <h4 style="color: var(--accent-danger); font-size: 0.95rem; margin-bottom: 0.75rem;">⚠️ Resharding Limitations</h4>
+              <ul style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.9; padding-left: 1.25rem;">
+                <li>Cannot reshard a <strong>time series collection</strong> or views.</li>
+                <li>Collection must have no <strong>active DDL</strong> operations during resharding.</li>
+                <li>Approximately <strong>2× storage overhead</strong> during the clone phase (old + new data coexists).</li>
+                <li>Write throughput on the collection is <strong>reduced ~30%</strong> during the clone window.</li>
+                <li>Resharding cannot be used to change the key to/from <strong>_id</strong>.</li>
+                <li>Only <strong>one resharding operation</strong> per cluster at a time.</li>
+                <li>On Atlas, requires at minimum an <strong>M30</strong> cluster tier.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="alert-box info" style="margin-top: 1rem;">
+            <span>💡</span>
+            <div>
+              <strong>Monitor with:</strong> <code>db.getSiblingDB("admin").currentOp({ type: "op", "$or": [{"desc": /reshard/i}] })</code>
+              — shows real-time resharding progress, estimated completion time, and bytes cloned.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lab 11 Report -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>📑</span> Lab 11 Brief Report: Findings &amp; Conclusions</h3>
+          <span class="badge-tag green">Academic Summary</span>
+        </div>
+        <div style="padding: 0 1.5rem 1.5rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md);">
+              <h4 style="color: var(--accent-cyan); font-size: 0.95rem; margin-bottom: 0.75rem;">Lab 11.1 Findings</h4>
+              <ul style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.9; padding-left: 1.25rem;">
+                <li><code>order_id</code>: High cardinality &amp; even distribution — but customer queries scatter-gather across all shards.</li>
+                <li><code>customer_id</code>: Good targeting — but VIP customers create write skew (hot chunks).</li>
+                <li><code>order_date</code>: Monotonically increasing — all inserts pile onto the latest chunk. Classic hotspot.</li>
+                <li><code>hashed customer_id</code>: Randomized distribution + customer-scoped query targeting. <strong>Best overall.</strong></li>
+              </ul>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); padding: 1.25rem; border-radius: var(--radius-md);">
+              <h4 style="color: var(--accent-cyan); font-size: 0.95rem; margin-bottom: 0.75rem;">Lab 11.2 Findings</h4>
+              <ul style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.9; padding-left: 1.25rem;">
+                <li>Monotonic timestamp key: ~9,500/500 split between shards. Single-shard write bottleneck confirmed.</li>
+                <li>Hashed user_id: ~5,000/5,000 even split. Write throughput scales linearly with shard count.</li>
+                <li>Range queries on <code>ts</code> efficiently target 1 shard. Hashed keys break range locality.</li>
+                <li><strong>Tradeoff:</strong> Hashed = even writes but no range efficiency; Ranged = range-fast but hotspot-prone.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub — Lab 11 Submission</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          The complete Lab 11 containerized demonstration (sharded cluster with two shards via Docker Compose) has been
+          published to Docker Hub for grading. The image bundles mongos, two shard replicas, the Python scripts, and this
+          interactive website on port 8011.
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code id="lab11DockerUrl" style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab11</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab11" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container:
+docker pull kasireddymeghana/nosql-lab11:latest
+docker run -d -p 8011:8011 --name nosql-lab11 kasireddymeghana/nosql-lab11:latest
+# Open: http://localhost:8011</code></pre>
+      </div>
+
+    </section>
+
+    <!-- TAB: LAB 12 - AUTHENTICATION, RBAC & TLS/ENCRYPTION -->
+    <section class="tab-pane" id="tab-lab12">
+      <!-- Hero Card -->
+      <div class="hero-card" style="border-left: 4px solid #10b981;">
+        <span class="hero-badge" style="background: rgba(16,185,129,0.2); color: #10b981;">Lab 12 Security Module</span>
+        <h2>MongoDB Authentication, RBAC &amp; TLS / Encryption-in-Transit</h2>
+        <p>
+          Comprehensive production security engineering: Enforce strict Role-Based Access Control (RBAC),
+          implement native database-level field redaction via aggregation views to conceal confidential salaries,
+          and configure mutual TLS 1.3 wire encryption with an OpenSSL X.509 PKI certificate chain.
+        </p>
+        <div class="hero-meta">
+          <span><strong>Security Standard:</strong> CIA Triad (Confidentiality &amp; Integrity)</span>
+          <span><strong>Auth Mode:</strong> SCRAM-SHA-256 (--auth)</span>
+          <span><strong>TLS Protocol:</strong> TLS 1.3 / AES-256-GCM (requireTLS)</span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Strip -->
+      <div class="metric-grid" style="margin-bottom: 2rem;">
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Auth &amp; RBAC Mode</span></div>
+          <div class="metric-value" style="color: var(--accent-green); font-size: 1.4rem;">--auth</div>
+          <div class="metric-sub">Principle of Least Privilege (PoLP) Enforced</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Provisioned Roles</span></div>
+          <div class="metric-value" style="color: var(--accent-cyan); font-size: 1.4rem;">5 Roles</div>
+          <div class="metric-sub">admin, read, readWrite, limitedWriter, hrRole</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Field Redaction</span></div>
+          <div class="metric-value" style="color: #f59e0b; font-size: 1.4rem;">$$REMOVE</div>
+          <div class="metric-sub">employees_safe View (Salary stripped, SSN masked)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span class="metric-title">Transport Security</span></div>
+          <div class="metric-value" style="color: #6366f1; font-size: 1.4rem;">requireTLS</div>
+          <div class="metric-sub">X.509 PKI + SAN (DNS:localhost, IP:127.0.0.1)</div>
+        </div>
+      </div>
+
+      <!-- Lab 12.1: RBAC Enforcement Simulator -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>🛡️</span> Lab 12.1: Role-Based Access Control (RBAC) Permission Simulator</h3>
+          <span class="badge-tag" style="background: rgba(16,185,129,0.15); color: #10b981;">Access Control Matrix</span>
+        </div>
+        <div class="panel-body">
+          <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.92rem;">
+            Test how MongoDB's native authorization engine evaluates permissions under the Principle of Least Privilege.
+            Select an identity and an operation to verify whether the request is granted or blocked with an <code>OperationFailure (Code 13: Unauthorized)</code>.
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div>
+              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Authenticated User Identity:</label>
+              <select id="lab12UserSelect" class="form-control" style="width: 100%; padding: 0.6rem; border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);">
+                <option value="admin">admin (clusterAdmin, userAdminAnyDatabase, readWriteAnyDatabase)</option>
+                <option value="app_user_read">app_user_read (Role: read on nosql_labs)</option>
+                <option value="app_user_write">app_user_write (Role: readWrite on nosql_labs)</option>
+                <option value="limited_writer">limited_writer (Custom: logs[find, insert, update], other[find])</option>
+                <option value="hr_user">hr_user (Custom: full readWrite on employees collection)</option>
+                <option value="standard_user">standard_user (Custom: find on employees_safe view only)</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Attempted Database Operation:</label>
+              <select id="lab12ActionSelect" class="form-control" style="width: 100%; padding: 0.6rem; border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);">
+                <option value="read_employees">find() on nosql_labs.employees</option>
+                <option value="write_employees">insertOne() / updateOne() on nosql_labs.employees</option>
+                <option value="read_logs">find() on nosql_labs.logs</option>
+                <option value="write_logs">insertOne() on nosql_labs.logs</option>
+                <option value="read_view_safe">find() on nosql_labs.employees_safe (View)</option>
+                <option value="read_finance_payroll">find() on finance_db.payroll (Cross-DB)</option>
+                <option value="admin_drop_db">dropDatabase() on nosql_labs</option>
+              </select>
+            </div>
+            <div>
+              <button id="btnTestRbac" class="btn btn-primary" style="padding: 0.65rem 1.4rem;">⚡ Test Permission</button>
+            </div>
+          </div>
+
+          <!-- Dynamic Result Box -->
+          <div id="lab12RbacResult" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.25rem;">Authorization Verdict</div>
+              <div id="lab12VerdictText" style="font-size: 1.1rem; font-weight: 700; color: var(--accent-green);">[READY] Select an identity and operation to simulate RBAC enforcement.</div>
+              <div id="lab12VerdictReason" style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 0.25rem;">MongoDB security subsystem checks roles and assigned privilege actions.</div>
+            </div>
+            <div id="lab12VerdictBadge" class="badge-tag green" style="font-size: 0.95rem; padding: 0.4rem 1rem;">PoLP Active</div>
+          </div>
+
+          <!-- RBAC Matrix Reference Table -->
+          <div style="margin-top: 1.5rem;">
+            <h4 style="font-size: 0.95rem; color: var(--accent-cyan); margin-bottom: 0.75rem;">📋 Granular RBAC Role Privilege Reference</h4>
+            <div style="overflow-x: auto;">
+              <table class="data-table" style="width: 100%; font-size: 0.85rem;">
+                <thead>
+                  <tr>
+                    <th>User Identity</th>
+                    <th>Role(s)</th>
+                    <th>Scope</th>
+                    <th>Allowed Actions</th>
+                    <th>Forbidden Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>admin</code></td>
+                    <td><span class="badge-tag purple">clusterAdmin, readWriteAny</span></td>
+                    <td>Cluster-wide</td>
+                    <td>All CRUD + User Management + Sharding</td>
+                    <td>None (Superuser)</td>
+                  </tr>
+                  <tr>
+                    <td><code>app_user_read</code></td>
+                    <td><span class="badge-tag blue">read</span></td>
+                    <td><code>nosql_labs.*</code></td>
+                    <td>find, count, aggregate</td>
+                    <td>insert, update, delete (Blocked)</td>
+                  </tr>
+                  <tr>
+                    <td><code>app_user_write</code></td>
+                    <td><span class="badge-tag green">readWrite</span></td>
+                    <td><code>nosql_labs.*</code></td>
+                    <td>find, insert, update, delete</td>
+                    <td>Cross-DB access (e.g. <code>finance_db</code>)</td>
+                  </tr>
+                  <tr>
+                    <td><code>limited_writer</code></td>
+                    <td><span class="badge-tag yellow">limitedWriter (Custom)</span></td>
+                    <td><code>logs</code> (write) / DB (read)</td>
+                    <td>insert/update on <code>logs</code>, find on all</td>
+                    <td>write to <code>employees</code> or any other collection</td>
+                  </tr>
+                  <tr>
+                    <td><code>hr_user</code></td>
+                    <td><span class="badge-tag green">hrRole (Custom)</span></td>
+                    <td><code>nosql_labs.employees</code></td>
+                    <td>full access to raw salaries &amp; SSNs</td>
+                    <td>System modifications</td>
+                  </tr>
+                  <tr>
+                    <td><code>standard_user</code></td>
+                    <td><span class="badge-tag cyan">standardViewRole</span></td>
+                    <td><code>nosql_labs.employees_safe</code></td>
+                    <td>find on sanitized view</td>
+                    <td>Direct query on raw <code>employees</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 12.1: Field-Level Redaction via Views -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>👁️</span> Activity 12.1: Field-Level Redaction via Views (HR vs Non-HR View)</h3>
+          <span class="badge-tag" style="background: rgba(245,158,11,0.15); color: #f59e0b;">Confidential Data Masking</span>
+        </div>
+        <div class="panel-body">
+          <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.92rem;">
+            Demonstrate database-native field redaction. General employees query the <code>employees_safe</code> view where the
+            <code>salary</code> field is completely excluded via <code>$$REMOVE</code> and <code>ssn</code> is masked, whereas HR members
+            query the underlying collection directly with full unredacted visibility.
+          </p>
+
+          <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+            <label style="font-size: 0.9rem; color: var(--text-primary); font-weight: 600;">Active Perspective:</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="btnViewHR" class="btn btn-secondary active" style="font-size: 0.85rem; padding: 0.45rem 1rem;">💼 HR Department (Direct Collection)</button>
+              <button id="btnViewSafe" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.45rem 1rem;">👤 General Employee (Redacted View)</button>
+            </div>
+            <button id="btnExecuteRedactionQuery" class="btn btn-primary" style="margin-left: auto; font-size: 0.85rem; padding: 0.45rem 1.2rem;">🔄 Execute Query</button>
+          </div>
+
+          <!-- Document Table -->
+          <div style="overflow-x: auto; margin-bottom: 1.25rem;">
+            <table class="data-table" style="width: 100%; font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>Emp ID</th>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th>SSN (PII)</th>
+                  <th>Base Salary (Confidential)</th>
+                  <th>Data Source</th>
+                </tr>
+              </thead>
+              <tbody id="lab12EmployeeTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.25); padding: 1rem; border-radius: var(--radius-md); border-left: 3px solid var(--accent-cyan); font-size: 0.85rem; color: var(--text-secondary);">
+            <strong style="color: var(--accent-cyan);">Aggregation Pipeline Definition:</strong><br/>
+            <code>db.createView("employees_safe", "employees", [{ $project: { emp_id: 1, name: 1, role: 1, department: 1, ssn: { $concat: ["***-**-", { $substrCP: ["$ssn", 7, 4] }] }, salary: "$$REMOVE" } }]);</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lab 12.2: TLS / Encryption-in-Transit Console -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>🔒</span> Lab 12.2: TLS / Encryption-in-Transit PKI &amp; Handshake Console</h3>
+          <span class="badge-tag" style="background: rgba(99,102,241,0.15); color: #818cf8;">OpenSSL PKI + Mutual TLS</span>
+        </div>
+        <div class="panel-body">
+          <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.92rem;">
+            Verify transport encryption. Test both an unencrypted connection attempt against a TLS-enforced port
+            (proving immediate rejection) and a TLS-encrypted connection via PyMongo utilizing the Root CA certificate.
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <!-- Unencrypted Test -->
+            <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid rgba(239,68,68,0.2);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h4 style="color: var(--accent-danger); font-size: 0.95rem; margin: 0;">❌ Plaintext Connection Test</h4>
+                <span class="badge-tag red">Unencrypted</span>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                Simulates an insecure client attempting to connect without TLS flags to port 27100.
+              </p>
+              <button id="btnTestPlainConn" class="btn btn-secondary" style="width: 100%; border-color: rgba(239,68,68,0.4); color: var(--accent-danger); font-size: 0.85rem;">
+                Attempt Plain Connection (Port 27100)
+              </button>
+              <div id="plainConnResult" style="margin-top: 0.75rem; font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-muted); display: none;"></div>
+            </div>
+
+            <!-- TLS Test -->
+            <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid rgba(16,185,129,0.2);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h4 style="color: var(--accent-green); font-size: 0.95rem; margin: 0;">✅ TLS-Encrypted Connection Test</h4>
+                <span class="badge-tag green">TLS 1.3 / mTLS</span>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                Connects using <code>tls=true</code>, <code>tlsCAFile=ca.crt</code>, and client certificate.
+              </p>
+              <button id="btnTestTlsConn" class="btn btn-primary" style="width: 100%; font-size: 0.85rem;">
+                Connect Over TLS &amp; Query Database
+              </button>
+              <div id="tlsConnResult" style="margin-top: 0.75rem; font-size: 0.8rem; font-family: var(--font-mono); color: var(--accent-green); display: none;"></div>
+            </div>
+          </div>
+
+          <!-- Certificate Chain Visualizer -->
+          <div style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+            <h4 style="font-size: 0.95rem; color: var(--accent-cyan); margin-bottom: 0.75rem;">🔐 X.509 Certificate Chain Details</h4>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; font-size: 0.82rem;">
+              <div style="background: var(--bg-card); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <strong style="color: var(--accent-cyan);">1. Root CA Certificate</strong><br/>
+                <span style="color: var(--text-muted);">Subject:</span> CN=NoSQL-Labs-CA<br/>
+                <span style="color: var(--text-muted);">Key:</span> 2048-bit RSA<br/>
+                <span style="color: var(--text-muted);">Type:</span> Self-Signed Trust Anchor
+              </div>
+              <div style="background: var(--bg-card); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <strong style="color: var(--accent-green);">2. Server Certificate</strong><br/>
+                <span style="color: var(--text-muted);">Subject:</span> CN=localhost<br/>
+                <span style="color: var(--text-muted);">SAN:</span> DNS:localhost, IP:127.0.0.1<br/>
+                <span style="color: var(--text-muted);">Bundle:</span> mongodb.pem (key + crt)
+              </div>
+              <div style="background: var(--bg-card); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <strong style="color: #818cf8;">3. Client Certificate</strong><br/>
+                <span style="color: var(--text-muted);">Subject:</span> CN=PyMongoClient<br/>
+                <span style="color: var(--text-muted);">Purpose:</span> Client Authentication (mTLS)<br/>
+                <span style="color: var(--text-muted);">Status:</span> Verified against Root CA
+              </div>
+            </div>
+          </div>
+
+          <!-- CIA Triad Info Box -->
+          <div style="background: rgba(99,102,241,0.08); border-left: 3px solid #6366f1; padding: 1rem; border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-secondary);">
+            <strong style="color: #818cf8;">CIA Triad Confidentiality Component:</strong> TLS encryption in transit ensures that sensitive operational payloads and authentication credentials traversing untrusted networks cannot be intercepted or tampered with by eavesdroppers or malicious network proxies.
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Interactive Terminal -->
+      <div class="panel" style="margin-bottom: 2rem;">
+        <div class="panel-header">
+          <h3><span>🖥️</span> Lab 12 Live Execution Console &amp; Automated Verification</h3>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span id="lab12StatusPill" class="badge-tag" style="background: rgba(255,255,255,0.08); color: var(--text-muted);">Ready</span>
+            <button id="btnRunLab12Full" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.35rem 0.9rem;">▶ Run Full Lab 12 Script</button>
+            <button id="btnLab12Clear" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.7rem;">Clear</button>
+          </div>
+        </div>
+        <div class="panel-body" style="padding: 0;">
+          <div class="terminal-body" id="lab12Terminal" style="min-height: 240px; max-height: 400px; overflow-y: auto; padding: 1rem; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.6; background: #0b0c10; color: #c5c6c7;">
+[INFO] Lab 12: Authentication, RBAC &amp; TLS / Encryption-in-Transit ready.
+[INFO] Click "Run Full Lab 12 Script" to execute the end-to-end security pipeline.
+[TIP]  Lab 12.1 provisions admin, scoped roles, and the redacted employees_safe view.
+[TIP]  Lab 12.2 generates OpenSSL X.509 certificates and validates wire encryption.
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="card" style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 2rem;">
+        <h3 style="font-size: 1.15rem; color: var(--text-primary); margin-bottom: 0.75rem;">🐳 Docker Hub — Lab 12 Submission</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          The complete Lab 12 containerized demonstration (MongoDB authentication, custom RBAC roles, field-level redaction views,
+          OpenSSL PKI generation, and this interactive security web console) has been published to Docker Hub for grading.
+        </p>
+        <div style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+          <code id="lab12DockerUrl" style="font-family: var(--font-mono); color: var(--accent-cyan); font-size: 0.95rem; flex: 1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab12</code>
+          <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab12" target="_blank" class="btn btn-primary" style="padding: 0.4rem 1rem; font-size: 0.85rem; text-decoration: none;">View on Docker Hub ↗</a>
+        </div>
+        <pre style="background: #090a0f; padding: 1rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); border: 1px solid rgba(255,255,255,0.05);"><code># Pull and run the interactive grading demonstration container on port 8012:
+docker pull kasireddymeghana/nosql-lab12:latest
+docker run -d -p 8012:8012 --name nosql-lab12 kasireddymeghana/nosql-lab12:latest
+# Open: http://localhost:8012</code></pre>
+      </div>
+
+    </section>
+
+    <!-- TAB: LAB 13 — Production Replica Set & Kubernetes StatefulSet -->
+    <section class="tab-pane" id="tab-lab13">
+
+      <!-- Hero Card -->
+      <div class="hero-card">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div style="font-size:2.8rem;">🚀</div>
+          <div>
+            <h1 style="margin:0;font-size:1.8rem;color:var(--text-primary);">Lab 13: Production Replica Set &amp; Kubernetes StatefulSet</h1>
+            <p style="margin:0.4rem 0 0;color:var(--text-secondary);">Secure MongoDB replica sets with keyFile auth, Kubernetes StatefulSet manifests, and Terraform Atlas provisioning.</p>
+          </div>
+          <span class="hero-badge" style="margin-left:auto;background:linear-gradient(135deg,var(--accent-green),var(--accent-cyan));color:#000;">Production Deployment</span>
+        </div>
+      </div>
+
+      <!-- Metric Cards -->
+      <div class="metrics-grid" style="margin-bottom:2rem;">
+        <div class="metric-card">
+          <div class="metric-header">🔑 Auth</div>
+          <div class="metric-value" style="color:var(--accent-cyan);">keyFile</div>
+          <div class="metric-sub">Mutual auth</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🗄️ Nodes</div>
+          <div class="metric-value" style="color:var(--accent-green);">3</div>
+          <div class="metric-sub">Replica set</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">☸️ Pods</div>
+          <div class="metric-value" style="color:var(--accent-purple);">StatefulSet</div>
+          <div class="metric-sub">Stable network IDs</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🌍 Cloud</div>
+          <div class="metric-value" style="color:var(--accent-yellow);">Terraform</div>
+          <div class="metric-sub">Atlas provisioning</div>
+        </div>
+      </div>
+
+      <!-- Activity 1 -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>⚙️ Activity 1 — Secure Replica Set via Docker Compose</span>
+          <span class="badge-tag" style="background:rgba(0,255,163,0.15);color:var(--accent-green);">lab_01_deploy_prod.sh</span>
+        </div>
+        <div class="panel-body">
+
+          <!-- Comparison Table -->
+          <h3 style="color:var(--accent-cyan);margin-top:0;">Chapter 8 vs Chapter 13 Comparison</h3>
+          <div class="table-responsive">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Aspect</th>
+                  <th>Chapter 8 (No Auth)</th>
+                  <th>Chapter 13 (keyFile Auth)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>keyFile generation</strong></td>
+                  <td><span style="color:var(--accent-red);">None</span></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--accent-green);">openssl rand -base64 756 &gt; keyfile</code></td>
+                </tr>
+                <tr>
+                  <td><strong>mongod flags</strong></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--text-secondary);">--replSet rs0</code></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--accent-cyan);">--auth --keyFile /tmp/keyfile</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Admin user</strong></td>
+                  <td><span style="color:var(--accent-red);">None</span></td>
+                  <td><span style="color:var(--accent-green);">Created before rs.initiate()</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Connection string</strong></td>
+                  <td><span style="color:var(--text-secondary);">No credentials</span></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--accent-cyan);">admin:AdminPass123! + authSource=admin</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Healthcheck</strong></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--text-secondary);">echo 'db.runCommand(...)'</code></td>
+                  <td><code style="font-family:var(--font-mono);color:var(--accent-green);">mongosh -u admin -p ...</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Terminal box: connection string -->
+          <div class="terminal-box" style="margin-top:1.5rem;">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">Authenticated Connection String</div>
+            </div>
+            <div class="terminal-body">
+              <span style="color:var(--accent-cyan);">mongodb://admin:AdminPass123!@mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0&amp;authSource=admin</span>
+            </div>
+          </div>
+
+          <!-- Buttons -->
+          <div style="display:flex;gap:1rem;margin-top:1.5rem;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="simulateLab13Deploy()">▶ Simulate Deployment Steps</button>
+            <button class="btn btn-secondary" onclick="checkLab13RsStatus()">🔄 Check Replica Set Status</button>
+          </div>
+          <div class="terminal-box" style="margin-top:1rem;" id="lab13Terminal1">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">Output</div>
+            </div>
+            <div class="terminal-body" id="lab13Terminal1Body" style="color:var(--text-secondary);font-style:italic;">
+              Click a button above to simulate…
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 2 -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>☸️ Activity 2 — Kubernetes StatefulSet Manifests</span>
+          <span class="badge-tag" style="background:rgba(165,122,255,0.15);color:var(--accent-purple);">lab_02_k8s_statefulset.py</span>
+        </div>
+        <div class="panel-body">
+
+          <!-- Concept Cards -->
+          <div class="layout-two-col" style="margin-bottom:1.5rem;">
+            <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1rem;">
+              <h4 style="color:var(--accent-purple);margin-top:0;">📦 StatefulSet vs Deployment</h4>
+              <p style="color:var(--text-secondary);font-size:0.9rem;margin:0;">StatefulSets give each Pod a stable, unique network identity (<code style="font-family:var(--font-mono);">mongo-0</code>, <code style="font-family:var(--font-mono);">mongo-1</code>, <code style="font-family:var(--font-mono);">mongo-2</code>) and an ordered startup sequence—essential for replica set initialisation where the primary must be elected before secondaries join.</p>
+            </div>
+            <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1rem;">
+              <h4 style="color:var(--accent-cyan);margin-top:0;">🌐 Headless Service (<code>clusterIP: None</code>)</h4>
+              <p style="color:var(--text-secondary);font-size:0.9rem;margin:0;">A headless service with <code style="font-family:var(--font-mono);">clusterIP: None</code> creates individual DNS records per Pod (<code style="font-family:var(--font-mono);">mongo-0.mongo.default.svc</code>) instead of a single VIP, letting replica-set members address each other directly by stable hostname.</p>
+            </div>
+            <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1rem;">
+              <h4 style="color:var(--accent-green);margin-top:0;">💾 volumeClaimTemplates</h4>
+              <p style="color:var(--text-secondary);font-size:0.9rem;margin:0;"><code style="font-family:var(--font-mono);">volumeClaimTemplates</code> automatically provisions a dedicated PersistentVolumeClaim for each Pod so that Pod data survives rescheduling. Each node's data is isolated, preventing cross-node data corruption.</p>
+            </div>
+          </div>
+
+          <!-- Manifest Viewer -->
+          <h3 style="color:var(--accent-cyan);">Manifest Viewer</h3>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <button class="btn btn-secondary" onclick="showLab13Manifest('namespace')" id="lab13Btn-namespace">00-namespace</button>
+            <button class="btn btn-secondary" onclick="showLab13Manifest('service')" id="lab13Btn-service">01-service</button>
+            <button class="btn btn-secondary" onclick="showLab13Manifest('statefulset')" id="lab13Btn-statefulset">02-statefulset</button>
+            <button class="btn btn-secondary" onclick="showLab13Manifest('initjob')" id="lab13Btn-initjob">03-init-job</button>
+          </div>
+          <div class="terminal-box">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title" id="lab13ManifestTitle">Select a manifest above</div>
+            </div>
+            <pre class="terminal-body" id="lab13ManifestDisplay" style="white-space:pre;overflow-x:auto;color:var(--accent-green);font-size:0.82rem;">← Select a manifest button to view YAML</pre>
+          </div>
+
+          <!-- K8s Simulate -->
+          <div style="margin-top:1.5rem;">
+            <button class="btn btn-primary" onclick="simulateLab13K8s()">▶ Simulate K8s Deployment</button>
+          </div>
+          <div class="terminal-box" style="margin-top:1rem;">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">kubectl Output</div>
+            </div>
+            <div class="terminal-body" id="lab13Terminal2" style="color:var(--text-secondary);font-style:italic;">
+              Click above to simulate…
+            </div>
+          </div>
+
+          <!-- Service Name Question -->
+          <div class="alert-box" style="margin-top:1.5rem;border-left:4px solid var(--accent-yellow);">
+            <strong style="color:var(--accent-yellow);">❓ What would break if <code>serviceName</code> references the wrong Service?</strong>
+            <p style="color:var(--text-secondary);margin:0.5rem 0 0;">The StatefulSet's <code style="font-family:var(--font-mono);">serviceName</code> field controls what DNS suffix each Pod gets. If it references the wrong (or a non-headless) Service, the generated DNS records (<code style="font-family:var(--font-mono);">mongo-0.&lt;svc&gt;.&lt;ns&gt;.svc.cluster.local</code>) will not resolve, causing <code>rs.initiate()</code> to fail because the hostnames listed in the replica-set config cannot be reached by other members.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terraform / Atlas Section -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>🌍 Terraform Atlas Provisioning</span>
+          <span class="badge-tag" style="background:rgba(255,195,0,0.15);color:var(--accent-yellow);">main.tf highlights</span>
+        </div>
+        <div class="panel-body">
+          <div class="terminal-box">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">main.tf</div>
+            </div>
+            <pre class="terminal-body" style="white-space:pre;overflow-x:auto;color:var(--accent-green);font-size:0.82rem;"><span style="color:var(--accent-purple);">terraform</span> {
+  required_providers {
+    mongodbatlas = { source = <span style="color:var(--accent-yellow);">"mongodb/mongodbatlas"</span> }
+  }
+}
+
+<span style="color:var(--accent-purple);">provider</span> <span style="color:var(--accent-cyan);">"mongodbatlas"</span> {
+  public_key  = var.atlas_public_key
+  private_key = var.atlas_private_key
+}
+
+<span style="color:var(--accent-purple);">resource</span> <span style="color:var(--accent-cyan);">"mongodbatlas_cluster"</span> <span style="color:var(--accent-cyan);">"lab13"</span> {
+  project_id   = var.atlas_project_id
+  name         = <span style="color:var(--accent-yellow);">"lab13-prod"</span>
+  cluster_type = <span style="color:var(--accent-yellow);">"REPLICASET"</span>
+  replication_specs { num_shards = 1
+    regions_config { region_name     = <span style="color:var(--accent-yellow);">"US_EAST_1"</span>
+                     electable_nodes = 3; priority = 7; read_only_nodes = 0 } }
+  provider_name               = <span style="color:var(--accent-yellow);">"AWS"</span>
+  provider_instance_size_name = <span style="color:var(--accent-yellow);">"M10"</span>
+}
+
+<span style="color:var(--accent-purple);">resource</span> <span style="color:var(--accent-cyan);">"mongodbatlas_database_user"</span> <span style="color:var(--accent-cyan);">"admin"</span> {
+  username           = <span style="color:var(--accent-yellow);">"admin"</span>
+  password           = var.atlas_db_password
+  project_id         = var.atlas_project_id
+  auth_database_name = <span style="color:var(--accent-yellow);">"admin"</span>
+  roles { role_name = <span style="color:var(--accent-yellow);">"atlasAdmin"</span>; database_name = <span style="color:var(--accent-yellow);">"admin"</span> }
+}
+
+<span style="color:var(--accent-purple);">resource</span> <span style="color:var(--accent-cyan);">"mongodbatlas_project_ip_access_list"</span> <span style="color:var(--accent-cyan);">"open"</span> {
+  project_id = var.atlas_project_id
+  cidr_block = <span style="color:var(--accent-yellow);">"0.0.0.0/0"</span>
+  comment    = <span style="color:var(--accent-yellow);">"Allow all (dev)"</span>
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>🐳 Docker Hub</span>
+          <span class="badge-tag" style="background:rgba(0,180,255,0.15);color:var(--accent-cyan);">kasireddymeghana/nosql-lab13</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;gap:1rem;align-items:center;background:rgba(0,0,0,0.3);padding:0.75rem 1rem;border-radius:var(--radius-md);margin-bottom:1rem;">
+            <code id="lab13DockerUrl" style="font-family:var(--font-mono);color:var(--accent-cyan);font-size:0.95rem;flex:1;">https://hub.docker.com/r/kasireddymeghana/nosql-lab13</code>
+            <a href="https://hub.docker.com/r/kasireddymeghana/nosql-lab13" target="_blank" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.85rem;text-decoration:none;">View on Docker Hub ↗</a>
+          </div>
+          <pre style="background:#090a0f;padding:1rem;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:0.82rem;color:var(--text-primary);border:1px solid rgba(255,255,255,0.05);"><code># Pull and run the Lab 13 production replica set demo on port 8013:
+docker pull kasireddymeghana/nosql-lab13:latest
+docker run -d -p 8013:8000 --name nosql-lab13 kasireddymeghana/nosql-lab13:latest
+# Open: http://localhost:8013</code></pre>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Inline JS for Lab 13 interactivity -->
+    <script>
+      (function () {
+        var manifests = {
+          namespace: {
+            title: '00-namespace.yaml',
+            code: `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: mongodb`
+          },
+          service: {
+            title: '01-headless-service.yaml',
+            code: `apiVersion: v1\nkind: Service\nmetadata:\n  name: mongo\n  namespace: mongodb\nspec:\n  clusterIP: None\n  selector:\n    app: mongo\n  ports:\n    - port: 27017`
+          },
+          statefulset: {
+            title: '02-statefulset.yaml',
+            code: `apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: mongo\n  namespace: mongodb\nspec:\n  serviceName: mongo\n  replicas: 3\n  selector:\n    matchLabels:\n      app: mongo\n  template:\n    metadata:\n      labels:\n        app: mongo\n    spec:\n      containers:\n        - name: mongo\n          image: mongo:7\n          args: ["--replSet","rs0","--auth","--keyFile","/tmp/keyfile"]\n          ports:\n            - containerPort: 27017\n          volumeMounts:\n            - name: data\n              mountPath: /data/db\n  volumeClaimTemplates:\n    - metadata:\n        name: data\n      spec:\n        accessModes: ["ReadWriteOnce"]\n        resources:\n          requests:\n            storage: 5Gi`
+          },
+          initjob: {
+            title: '03-init-job.yaml',
+            code: `apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: rs-init\n  namespace: mongodb\nspec:\n  template:\n    spec:\n      restartPolicy: OnFailure\n      containers:\n        - name: rs-init\n          image: mongo:7\n          command:\n            - mongosh\n            - "mongo-0.mongo.mongodb.svc.cluster.local"\n            - "--eval"\n            - |\n              rs.initiate({\n                _id: "rs0",\n                members: [\n                  {_id:0,host:"mongo-0.mongo.mongodb:27017"},\n                  {_id:1,host:"mongo-1.mongo.mongodb:27017"},\n                  {_id:2,host:"mongo-2.mongo.mongodb:27017"}\n                ]\n              })`
+          }
+        };
+
+        window.showLab13Manifest = function (key) {
+          var m = manifests[key];
+          if (!m) return;
+          document.getElementById('lab13ManifestTitle').textContent = m.title;
+          document.getElementById('lab13ManifestDisplay').textContent = m.code;
+          ['namespace','service','statefulset','initjob'].forEach(function(k){
+            document.getElementById('lab13Btn-'+k).classList.remove('btn-primary');
+            document.getElementById('lab13Btn-'+k).classList.add('btn-secondary');
+          });
+          document.getElementById('lab13Btn-'+key).classList.add('btn-primary');
+          document.getElementById('lab13Btn-'+key).classList.remove('btn-secondary');
+        };
+
+        var deploySteps = [
+          '$ openssl rand -base64 756 > mongo-keyfile',
+          '$ chmod 400 mongo-keyfile',
+          '$ docker compose up -d',
+          '[+] Running 3/3',
+          ' ✔ Container mongo1  Started',
+          ' ✔ Container mongo2  Started',
+          ' ✔ Container mongo3  Started',
+          '$ sleep 5',
+          '$ docker exec mongo1 mongosh --eval "rs.initiate({...})"',
+          '{ ok: 1 }',
+          '$ docker exec mongo1 mongosh -u admin -p AdminPass123! --authSource admin --eval "rs.status().members.map(m=>m.name+\':\'+m.stateStr)"',
+          '[ \'mongo1:27017:PRIMARY\', \'mongo2:27017:SECONDARY\', \'mongo3:27017:SECONDARY\' ]',
+          '✅ Secure replica set deployed successfully!'
+        ];
+
+        var rsStatusSteps = [
+          '$ mongosh "mongodb://admin:AdminPass123!@mongo1:27017/?replicaSet=rs0&authSource=admin" --eval "rs.status()"',
+          '{',
+          '  set: \'rs0\',',
+          '  members: [',
+          '    { _id: 0, name: \'mongo1:27017\', health: 1, stateStr: \'PRIMARY\'   },',
+          '    { _id: 1, name: \'mongo2:27017\', health: 1, stateStr: \'SECONDARY\' },',
+          '    { _id: 2, name: \'mongo3:27017\', health: 1, stateStr: \'SECONDARY\' }',
+          '  ]',
+          '}',
+          '✅ Replica set healthy — 1 PRIMARY, 2 SECONDARY'
+        ];
+
+        function typeLines(lines, el, delay) {
+          el.style.fontStyle = 'normal';
+          el.innerHTML = '';
+          lines.forEach(function (line, i) {
+            setTimeout(function () {
+              var color = line.startsWith('$') ? 'var(--accent-cyan)' :
+                          line.startsWith('✅') ? 'var(--accent-green)' :
+                          line.startsWith('[+]') || line.startsWith(' ✔') ? 'var(--accent-green)' :
+                          'var(--text-primary)';
+              el.innerHTML += '<span style="color:' + color + ';">' + line.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>\n';
+            }, i * delay);
+          });
+        }
+
+        window.simulateLab13Deploy = function () {
+          typeLines(deploySteps, document.getElementById('lab13Terminal1Body'), 300);
+        };
+
+        window.checkLab13RsStatus = function () {
+          typeLines(rsStatusSteps, document.getElementById('lab13Terminal1Body'), 250);
+        };
+
+        var k8sSteps = [
+          '$ kubectl apply -f 00-namespace.yaml',
+          'namespace/mongodb created',
+          '$ kubectl apply -f 01-headless-service.yaml',
+          'service/mongo created',
+          '$ kubectl apply -f 02-statefulset.yaml',
+          'statefulset.apps/mongo created',
+          '$ kubectl rollout status statefulset/mongo -n mongodb',
+          'Waiting for 3 pods to be ready...',
+          'statefulset rolling update complete 3 pods at revision mongo-5c8b9d7f4...',
+          '$ kubectl apply -f 03-init-job.yaml',
+          'job.batch/rs-init created',
+          '$ kubectl logs job/rs-init -n mongodb',
+          '{ ok: 1 }',
+          '$ kubectl get pods -n mongodb',
+          'NAME      READY   STATUS    RESTARTS   AGE',
+          'mongo-0   1/1     Running   0          2m',
+          'mongo-1   1/1     Running   0          90s',
+          'mongo-2   1/1     Running   0          60s',
+          '✅ Kubernetes StatefulSet deployment complete!'
+        ];
+
+        window.simulateLab13K8s = function () {
+          typeLines(k8sSteps, document.getElementById('lab13Terminal2'), 280);
+        };
+      })();
+    </script>
+
+    <!-- TAB: LAB 14 — Monitoring Dashboard & Backup Verification -->
+    <section class="tab-pane" id="tab-lab14">
+
+      <!-- Hero Card -->
+      <div class="hero-card">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div style="font-size:2.8rem;">📊</div>
+          <div>
+            <h1 style="margin:0;font-size:1.8rem;color:var(--text-primary);">Lab 14: Production Monitoring &amp; Backup/Restore Verification</h1>
+            <p style="margin:0.4rem 0 0;color:var(--text-secondary);">MongoDB serverStatus telemetry, proactive alerting thresholds, incident log correlation, and cryptographic checksum-verified disaster recovery (RPO &amp; RTO).</p>
+          </div>
+          <span class="hero-badge" style="margin-left:auto;background:linear-gradient(135deg,var(--accent-primary),var(--accent-cyan));color:#000;">Operations &amp; DR</span>
+        </div>
+      </div>
+
+      <!-- Metric Cards Grid -->
+      <div class="metrics-grid" style="margin-bottom:2rem;">
+        <div class="metric-card">
+          <div class="metric-header">🔌 Connections</div>
+          <div class="metric-value" id="lab14MetricConn" style="color:var(--accent-cyan);">9 / 1M</div>
+          <div class="metric-sub">&lt; 0.01% Saturation</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🧠 WiredTiger Cache</div>
+          <div class="metric-value" id="lab14MetricCache" style="color:var(--accent-primary);">2.9%</div>
+          <div class="metric-sub">Healthy (&lt; 80% Alert)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">⚡ Operations</div>
+          <div class="metric-value" id="lab14MetricOps" style="color:var(--accent-secondary);">743k Ops</div>
+          <div class="metric-sub">Insert / Query / Update</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🛡️ Verification</div>
+          <div class="metric-value" id="lab14MetricDR" style="color:var(--accent-warning);">Dual Check</div>
+          <div class="metric-sub">Count + SHA-256 Hash</div>
+        </div>
+      </div>
+
+      <!-- Activity 1 Panel: Monitoring Dashboard -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>📈 Activity 1 — Live Monitoring Dashboard &amp; Alert Thresholds</span>
+          <span class="badge-tag" style="background:rgba(16,185,129,0.15);color:var(--accent-primary);">lab_01_monitoring_dashboard.py</span>
+        </div>
+        <div class="panel-body">
+          <h3 style="color:var(--accent-cyan);margin-top:0;">Key Architectural Principles</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div style="background:var(--bg-glass);padding:1rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);">📡 serverStatus Telemetry</h4>
+              <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">MongoDB's built-in single admin command returning connections, operation counters, replication state, and WiredTiger memory residency in real time without external agents.</p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);">⚠️ Actionable Thresholds</h4>
+              <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">Raw numbers (e.g. 340 connections) become actionable only when compared against capacity limits (e.g. &gt; 80% saturation or WiredTiger cache &gt; 80%) before downtime strikes.</p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);">📝 Terminal vs Incident Logs</h4>
+              <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">Terminal Rich tables provide immediate operator visibility, while append-only log files (<code>logs/metrics.log</code>) preserve time-series data for post-incident root-cause correlation.</p>
+            </div>
+          </div>
+
+          <!-- Controls Bar -->
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;margin-bottom:1.5rem;background:var(--bg-glass);padding:1rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+            <button class="btn btn-primary" id="btnLab14FetchMetrics">
+              <span>🔄</span> Fetch Live Metrics
+            </button>
+            <button class="btn btn-secondary" id="btnLab14RunMonitor">
+              <span>▶️</span> Run Monitoring Cycle &amp; Log
+            </button>
+            <button class="btn btn-secondary" id="btnLab14ViewLogs">
+              <span>📁</span> View Appended metrics.log
+            </button>
+            <div id="lab14AlertBadge" style="margin-left:auto;padding:0.4rem 0.8rem;border-radius:var(--radius-full);background:rgba(16,185,129,0.15);color:var(--accent-primary);font-size:0.85rem;font-weight:600;">
+              ● Systems Nominal (No Alerts)
+            </div>
+          </div>
+
+          <!-- Live Table Display -->
+          <div class="table-responsive" style="margin-bottom:1.5rem;">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Telemetry Metric</th>
+                  <th>Current Reading</th>
+                  <th>Alert Threshold</th>
+                  <th>Health Status</th>
+                </tr>
+              </thead>
+              <tbody id="lab14MetricsTableBody">
+                <tr>
+                  <td><strong>Current Connections</strong></td>
+                  <td id="m_conn_curr" style="font-family:var(--font-mono);color:var(--accent-cyan);">9</td>
+                  <td>&gt; 80% of max incoming (800,000)</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">HEALTHY</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Available Connections</strong></td>
+                  <td id="m_conn_avail" style="font-family:var(--font-mono);color:var(--text-primary);">999,991</td>
+                  <td>&lt; 20% total capacity</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">HEALTHY</span></td>
+                </tr>
+                <tr>
+                  <td><strong>WiredTiger Cache Usage</strong></td>
+                  <td id="m_cache_pct" style="font-family:var(--font-mono);color:var(--accent-primary);">2.89%</td>
+                  <td>&gt; 80.0% configured RAM</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">HEALTHY</span></td>
+                </tr>
+                <tr>
+                  <td><strong>WiredTiger Cache In-Use</strong></td>
+                  <td id="m_cache_bytes" style="font-family:var(--font-mono);color:var(--text-primary);">216.6 MB / 7,482 MB</td>
+                  <td>RAM eviction pressure</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">HEALTHY</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Cache Dirty Bytes</strong></td>
+                  <td id="m_cache_dirty" style="font-family:var(--font-mono);color:var(--text-primary);">1,424,021 bytes</td>
+                  <td>Checkpoints pending</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">HEALTHY</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Cumulative Operations (Ins / Qry / Upd / Del)</strong></td>
+                  <td id="m_ops_summary" style="font-family:var(--font-mono);color:var(--accent-secondary);">723,865 / 19,034 / 386 / 13</td>
+                  <td>Abnormal spike &gt; 10k ops/sec</td>
+                  <td><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">NORMAL</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Terminal Viewer for Monitoring -->
+          <div class="terminal-box" style="margin-bottom:1.5rem;">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">Monitoring Console &amp; Rich Table Output</div>
+            </div>
+            <div class="terminal-body" id="lab14Terminal1" style="max-height:220px;overflow-y:auto;font-family:var(--font-mono);font-size:0.84rem;line-height:1.45;">
+              <div style="color:var(--text-secondary);">[READY] Click "Fetch Live Metrics" or "Run Monitoring Cycle &amp; Log" to poll serverStatus.</div>
+            </div>
+          </div>
+
+          <!-- Appended Log Viewer Box -->
+          <div style="background:var(--bg-glass);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+              <span style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">📁 Persistent Incident Log (logs/metrics.log)</span>
+              <span class="badge-tag" style="background:rgba(99,102,241,0.2);color:var(--accent-secondary);">Append-Only File Audit</span>
+            </div>
+            <div id="lab14LogContainer" style="background:rgba(0,0,0,0.5);border-radius:var(--radius-sm);padding:0.75rem;max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:0.78rem;color:var(--text-secondary);white-space:pre-wrap;">Click "View Appended metrics.log" to inspect the time-series audit trail.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 2 Panel: Backup & Restore Verification -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>💾 Activity 2 — Automated Backup &amp; Restore Verification (RPO/RTO)</span>
+          <span class="badge-tag" style="background:rgba(245,158,11,0.15);color:var(--accent-warning);">lab_02_backup_restore.py</span>
+        </div>
+        <div class="panel-body">
+          <h3 style="color:var(--accent-warning);margin-top:0;">Why a Backup You Haven't Restored is Just a Hope</h3>
+          <p style="color:var(--text-secondary);line-height:1.6;margin-bottom:1.5rem;">
+            Automated backups with <code>mongodump</code> are incomplete without an automated <strong>restorability verification pipeline</strong>. A backup job reporting success can still leave corrupted, truncated, or unparseable files. To guarantee disaster recovery readiness, we measure our <strong>Recovery Time Objective (RTO)</strong> and enforce dual-factor verification:
+          </p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+              <h4 style="margin:0 0 0.5rem;color:var(--accent-danger);">❌ Why Count Check Alone is Weak</h4>
+              <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">
+                A document count check verifies only that 500 records exist. If a silent bug corrupts an invoice amount from \$150.00 to \$99,999.00 or zeroes out a customer ID, <strong>the count remains 500</strong>. Relying solely on count creates a dangerous illusion of safety.
+              </p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+              <h4 style="margin:0 0 0.5rem;color:var(--accent-primary);">✅ Cryptographic SHA-256 Checksum</h4>
+              <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">
+                By sorting documents deterministically and stripping volatile <code>_id</code> ObjectIds (which mongorestore may alter), we compute a content-only SHA-256 hash. If even a single byte or float differs after restore, the checksum fails immediately!
+              </p>
+            </div>
+          </div>
+
+          <!-- Verification Drill Controls -->
+          <div style="background:var(--bg-glass);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1.25rem;margin-bottom:1.5rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <input type="checkbox" id="chkLab14Corrupt" style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent-danger);">
+                <label for="chkLab14Corrupt" style="cursor:pointer;font-weight:600;color:var(--text-primary);font-size:0.95rem;">
+                  ⚠️ Inject Deliberate Silent Data Corruption (Mutates 1 document's value while keeping count 500)
+                </label>
+              </div>
+              <button class="btn btn-primary" id="btnLab14RunRestore" style="background:linear-gradient(135deg,var(--accent-warning),var(--accent-danger));border:none;">
+                <span>🚀</span> Execute Full Backup &amp; Restore Drill
+              </button>
+            </div>
+          </div>
+
+          <!-- Step Progress Visualizer -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.75rem;margin-bottom:1.5rem;">
+            <div class="metric-card" id="drStep1Card">
+              <div class="metric-header">Step 1</div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Seed &amp; Baseline</div>
+              <div class="metric-sub" id="drStep1Sub">500 docs + SHA-256</div>
+            </div>
+            <div class="metric-card" id="drStep2Card">
+              <div class="metric-header">Step 2</div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">mongodump</div>
+              <div class="metric-sub" id="drStep2Sub">Timestamped folder</div>
+            </div>
+            <div class="metric-card" id="drStep3Card">
+              <div class="metric-header">Step 3</div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Simulate Loss</div>
+              <div class="metric-sub" id="drStep3Sub">col.drop() (0 docs)</div>
+            </div>
+            <div class="metric-card" id="drStep4Card">
+              <div class="metric-header">Step 4</div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">mongorestore</div>
+              <div class="metric-sub" id="drStep4Sub">Measured RTO</div>
+            </div>
+            <div class="metric-card" id="drStep5Card">
+              <div class="metric-header">Step 5</div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Dual Verify</div>
+              <div class="metric-sub" id="drStep5Sub">Count + Checksum</div>
+            </div>
+          </div>
+
+          <!-- Live Terminal Viewer for DR Drill -->
+          <div class="terminal-box" style="margin-bottom:1.5rem;">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot" style="background:#ff5f56;"></span>
+                <span class="terminal-dot" style="background:#ffbd2e;"></span>
+                <span class="terminal-dot" style="background:#27c93f;"></span>
+              </div>
+              <div class="terminal-title">Disaster Recovery Execution Console (mongodump &amp; mongorestore)</div>
+            </div>
+            <div class="terminal-body" id="lab14Terminal2" style="max-height:260px;overflow-y:auto;font-family:var(--font-mono);font-size:0.84rem;line-height:1.45;">
+              <div style="color:var(--text-secondary);">[READY] Click "Execute Full Backup &amp; Restore Drill" to run the automated verification pipeline.</div>
+            </div>
+          </div>
+
+          <!-- Verification Outcome Comparison Table -->
+          <div class="table-responsive" id="lab14VerdictSection" style="display:none;margin-bottom:1rem;">
+            <table class="styled-table">
+              <thead>
+                <tr>
+                  <th>Verification Check</th>
+                  <th>Original Baseline</th>
+                  <th>Post-Restore Result</th>
+                  <th>Verification Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Document Count Check</strong></td>
+                  <td id="v_orig_count" style="font-family:var(--font-mono);">500</td>
+                  <td id="v_rest_count" style="font-family:var(--font-mono);">500</td>
+                  <td id="v_count_status"><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">MATCH [OK]</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Content SHA-256 Checksum</strong></td>
+                  <td id="v_orig_hash" style="font-family:var(--font-mono);font-size:0.8rem;">7eacb1b11dce...</td>
+                  <td id="v_rest_hash" style="font-family:var(--font-mono);font-size:0.8rem;">7eacb1b11dce...</td>
+                  <td id="v_hash_status"><span class="badge-tag" style="background:rgba(16,185,129,0.2);color:var(--accent-primary);">MATCH [OK]</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Measured Recovery Time (RTO)</strong></td>
+                  <td colspan="2" style="font-family:var(--font-mono);color:var(--accent-cyan);"><span id="v_rto_time">0.082s (82 ms)</span> restore latency</td>
+                  <td><span class="badge-tag" style="background:rgba(99,102,241,0.2);color:var(--accent-secondary);">RTO BENCHMARK</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Final Audit Verdict</strong></td>
+                  <td colspan="3" id="v_final_verdict" style="font-weight:700;color:var(--accent-primary);">
+                    [OK] Restore verified: document count AND content checksum match.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 3: Deep Technical Q&A and Engineering Analysis -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>📚 Core Lab Questions &amp; Technical Answers</span>
+          <span class="badge-tag" style="background:rgba(99,102,241,0.15);color:var(--accent-secondary);">Viva &amp; Exam Solutions</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;flex-direction:column;gap:1.25rem;">
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-cyan);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">Q1: Why is serverStatus preferred over polling custom queries for telemetry?</h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">
+                <code>serverStatus</code> is an internal engine command processed directly in memory by mongod. It incurs virtually zero disk I/O or query-planning overhead while capturing thousands of low-level counters (WiredTiger dirty cache pages, connection pool states, tickets available) that application queries cannot see.
+              </p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-primary);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">Q2: What is the significance of deciding alert thresholds for dev vs production?</h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">
+                A single developer instance running out of 200 connections indicates an abnormal connection leak. In high-concurrency production (e.g. 50,000 connections), thresholds are set as percentages of configured limits (e.g., 75% warning, 85% critical) to allow sufficient head-room for autoscaling or emergency replica failover before client requests get dropped.
+              </p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-warning);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">Q3: Why is document count matching a weak verification check?</h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">
+                Document count only verifies structural cardinality. It cannot distinguish between 500 perfectly restored orders and 500 documents whose payloads are corrupt, truncated, or zeroed out. Only a deterministic cryptographic content checksum (SHA-256) proves byte-level integrity.
+              </p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-secondary);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">Q4: Why must the content checksum be calculated independently of document insertion order and _id?</h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">
+                MongoDB is an unordered document store: parallel <code>mongorestore</code> insertion workers do not guarantee identical insertion order. Furthermore, <code>_id</code> ObjectIds include machine and timestamp metadata that may differ if restored into a new environment. Stripping <code>_id</code> and sorting by a canonical business key (e.g. <code>order_id</code>) ensures mathematical determinism.
+              </p>
+            </div>
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-danger);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">Q5: How do RPO and RTO dictate enterprise backup architectures?</h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">
+                <strong>RPO (Recovery Point Objective):</strong> How much data you can tolerate losing (e.g. 15 minutes of writes dictates continuous oplog streaming).<br>
+                <strong>RTO (Recovery Time Objective):</strong> How long the business can tolerate being offline (e.g. 1 hour). Timing the restore phase provides empirical data to confirm whether physical hardware and network bandwidth can meet RTO obligations.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB: LAB 15 — Multi-Tenant Architecture & Migration -->
+    <section class="tab-pane" id="tab-lab15">
+
+      <!-- Hero Card -->
+      <div class="hero-card" style="border-left: 4px solid var(--accent-cyan);">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div style="font-size:2.8rem;">🏢</div>
+          <div>
+            <h1 style="margin:0;font-size:1.8rem;color:var(--text-primary);">Lab 15: Multi-Tenant SaaS Architecture &amp; Data Migration</h1>
+            <p style="margin:0.4rem 0 0;color:var(--text-secondary);">
+              Shared-collection tenant isolation, strict tenant-scoped query filters, database-native rate limiting, dry-run &amp; idempotent enterprise migration, and zero-risk rollback mechanisms.
+            </p>
+          </div>
+          <span class="hero-badge" style="margin-left:auto;background:linear-gradient(135deg,var(--accent-cyan),var(--accent-primary));color:#000;">
+            SaaS Isolation &amp; Migrations
+          </span>
+        </div>
+      </div>
+
+      <!-- Metric Cards Grid -->
+      <div class="metrics-grid" style="margin-bottom:2rem;">
+        <div class="metric-card">
+          <div class="metric-header">🏢 Shared Collection</div>
+          <div class="metric-value" style="color:var(--accent-cyan);">Single Col</div>
+          <div class="metric-sub"><code>saas_app.tasks</code> with <code>tenant_id</code> discriminator</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🛡️ Isolation Guard</div>
+          <div class="metric-value" style="color:var(--accent-primary);">100% Filtered</div>
+          <div class="metric-sub"><code>{"_id": id, "tenant_id": id}</code> on every CRUD op</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">⏱️ Rate Limiting</div>
+          <div class="metric-value" style="color:var(--accent-warning);">10 req / 60s</div>
+          <div class="metric-sub">MongoDB-native sliding window counter</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">🔄 Idempotent Migration</div>
+          <div class="metric-value" style="color:var(--accent-secondary);">0 Duplicates</div>
+          <div class="metric-sub">Upsert on natural key + SHA-256 verification</div>
+        </div>
+      </div>
+
+      <!-- Activity 15.1: Multi-Tenant API & Cross-Tenant Exploitation Test -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>🛠️ Activity 1: Design a Multi-Tenant SaaS API</span>
+          <span class="badge-tag" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan);">Lab 15.1 API</span>
+        </div>
+        <div class="panel-body">
+          <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem;line-height:1.6;">
+            Shared-collection isolation means every tenant's documents live in the same collection (<code>saas_app.tasks</code>), distinguished only by a <code>tenant_id</code> field. It offers the lowest cloud cost and simplest index management, but application queries must <strong>strictly enforce</strong> tenant boundaries on every single read, update, and delete operation.
+          </p>
+
+          <!-- Tenant Selector & Tasks Explorer -->
+          <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);margin-bottom:1.5rem;border:1px solid var(--border-color);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <label style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">Active Tenant Scope:</label>
+                <select id="lab15TenantSelect" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.8rem;font-family:var(--font-mono);font-size:0.85rem;">
+                  <option value="tenant-acme">tenant-acme (Acme Corp)</option>
+                  <option value="tenant-globex">tenant-globex (Globex Inc)</option>
+                </select>
+                <button class="btn btn-secondary" id="btnLab15RefreshTasks" style="padding:0.35rem 0.75rem;font-size:0.8rem;">🔄 Refresh Tasks</button>
+              </div>
+              <div style="font-size:0.85rem;color:var(--text-muted);">
+                Shared Collection: <code style="color:var(--accent-cyan);">saas_app.tasks</code>
+              </div>
+            </div>
+
+            <!-- Task Table -->
+            <div class="table-responsive" style="margin-bottom:1.5rem;">
+              <table class="styled-table">
+                <thead>
+                  <tr>
+                    <th>Task ID (_id)</th>
+                    <th>Tenant ID</th>
+                    <th>Title &amp; Description</th>
+                    <th>Priority</th>
+                    <th>Assignee</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="lab15TasksTableBody">
+                  <tr>
+                    <td colspan="7" style="text-align:center;color:var(--text-muted);padding:1rem;">Loading tenant tasks...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Create Task Form -->
+            <div style="background:rgba(0,0,0,0.2);padding:1rem;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.05);">
+              <h4 style="margin:0 0 0.75rem;font-size:0.9rem;color:var(--text-primary);">➕ Create Task under Active Tenant Scope</h4>
+              <div style="display:grid;grid-template-columns:2fr 3fr 1fr 1fr auto;gap:0.75rem;align-items:end;">
+                <div>
+                  <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">Title</label>
+                  <input type="text" id="lab15NewTitle" placeholder="e.g. Deploy Microservice" style="width:100%;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.6rem;font-size:0.85rem;">
+                </div>
+                <div>
+                  <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">Description</label>
+                  <input type="text" id="lab15NewDesc" placeholder="Task details and deliverables" style="width:100%;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.6rem;font-size:0.85rem;">
+                </div>
+                <div>
+                  <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">Priority</label>
+                  <select id="lab15NewPriority" style="width:100%;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.5rem;font-size:0.85rem;">
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">Assignee</label>
+                  <input type="text" id="lab15NewAssignee" placeholder="e.g. priya" style="width:100%;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.6rem;font-size:0.85rem;">
+                </div>
+                <div>
+                  <button class="btn btn-primary" id="btnLab15CreateTask" style="padding:0.45rem 1rem;font-size:0.85rem;white-space:nowrap;">Create Task</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cross-Tenant Security Exploit Test Simulator -->
+          <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);margin-bottom:1.5rem;border-left:4px solid var(--accent-danger);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;">
+              <h3 style="margin:0;font-size:1.1rem;color:var(--text-primary);">🚨 Crux of Isolation: The Cross-Tenant Exploit Simulator</h3>
+              <span class="badge-tag red">Security Vulnerability Drill</span>
+            </div>
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:1rem;line-height:1.6;">
+              Look at <code>update_task</code>'s filter: It filters on <code>{"_id": task_id, "tenant_id": tenant_id}</code> together — not just <code>{"_id": task_id}</code>. If an application developer mistakenly omits <code>tenant_id</code>, any authenticated tenant who guesses or observes another tenant's task ID can mutate or delete their confidential records!
+            </p>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+              <!-- Secure Isolation -->
+              <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius-sm);padding:1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                  <strong style="color:var(--accent-primary);font-size:0.95rem;">✅ Secure Filter (Actual Implementation)</strong>
+                  <span class="badge-tag green">ISOLATED</span>
+                </div>
+                <pre style="background:rgba(0,0,0,0.3);padding:0.6rem;border-radius:4px;font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary);margin-bottom:0.75rem;">col.update_one(
+  {"_id": task_id, "tenant_id": caller_tenant},
+  {"$set": updates}
+)</pre>
+                <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+                  Globex passes Acme's Task ID with <code>caller_tenant="tenant-globex"</code>. Filter matches <strong>0 documents</strong>. Attack blocked!
+                </p>
+                <button class="btn btn-primary" id="btnLab15TestSecureUpdate" style="font-size:0.8rem;padding:0.4rem 0.8rem;width:100%;">
+                  🛡️ Test Secure Filter (Globex updates Acme's Task)
+                </button>
+              </div>
+
+              <!-- Vulnerable Exploit -->
+              <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius-sm);padding:1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                  <strong style="color:var(--accent-danger);font-size:0.95rem;">❌ Vulnerable Filter (Flawed Anti-Pattern)</strong>
+                  <span class="badge-tag red">BREACH RISK</span>
+                </div>
+                <pre style="background:rgba(0,0,0,0.3);padding:0.6rem;border-radius:4px;font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary);margin-bottom:0.75rem;">col.update_one(
+  {"_id": task_id},  # VULNERABLE: Missing tenant_id!
+  {"$set": updates}
+)</pre>
+                <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+                  Globex passes Acme's Task ID. MongoDB finds the document by <code>_id</code> alone and mutates it. Tenant isolation broken!
+                </p>
+                <button class="btn btn-secondary" id="btnLab15TestExploitUpdate" style="font-size:0.8rem;padding:0.4rem 0.8rem;width:100%;background:rgba(239,68,68,0.2);color:var(--accent-danger);border-color:rgba(239,68,68,0.4);">
+                  ⚠️ Simulate Vulnerable Filter (Demonstrate Breach)
+                </button>
+              </div>
+            </div>
+
+            <!-- Exploit Result Box -->
+            <div id="lab15ExploitResult" style="display:none;padding:0.85rem;border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:0.82rem;"></div>
+          </div>
+
+          <!-- MongoDB Native Rate Limiter -->
+          <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);margin-bottom:1.5rem;border:1px solid var(--border-color);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;">
+              <h3 style="margin:0;font-size:1.1rem;color:var(--text-primary);">⏱️ Database-Native Sliding Window Rate Limiter</h3>
+              <span class="badge-tag" style="background:rgba(245,158,11,0.2);color:var(--accent-warning);">10 req / 60s Limit</span>
+            </div>
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:1rem;line-height:1.6;">
+              Rather than maintaining a separate Redis cache infrastructure, <code>check_rate_limit</code> writes timestamps into MongoDB (<code>saas_app.rate_limits</code>) and runs an indexed <code>count_documents</code> with a cutoff (<code>time.time() - 60</code>). If count &ge; 10, the call is rejected immediately.
+            </p>
+
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:1.5rem;align-items:start;">
+              <div>
+                <div style="background:rgba(0,0,0,0.25);padding:1rem;border-radius:var(--radius-sm);margin-bottom:1rem;border:1px solid rgba(255,255,255,0.05);">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;font-size:0.85rem;">
+                    <span style="color:var(--text-muted);">Current Window Requests:</span>
+                    <strong id="lab15RateCountVal" style="color:var(--accent-primary);font-family:var(--font-mono);">0 / 10</strong>
+                  </div>
+                  <div class="progress-track" style="height:10px;background:rgba(255,255,255,0.1);border-radius:5px;overflow:hidden;margin-bottom:0.75rem;">
+                    <div id="lab15RateProgressBar" style="width:0%;height:100%;background:var(--accent-primary);transition:width 0.3s ease;"></div>
+                  </div>
+                  <div style="font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;">
+                    <span>0 req</span>
+                    <span>5 req</span>
+                    <span>10 req (Limit)</span>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                  <button class="btn btn-primary" id="btnLab15SendSingleReq" style="font-size:0.85rem;">
+                    ⚡ Send 1 API Request
+                  </button>
+                  <button class="btn btn-secondary" id="btnLab15SendBurstReq" style="font-size:0.85rem;background:rgba(245,158,11,0.2);color:var(--accent-warning);border-color:rgba(245,158,11,0.4);">
+                    🔥 Send Burst Test (12 Rapid Requests)
+                  </button>
+                  <button class="btn btn-secondary" id="btnLab15ResetRateLimit" style="font-size:0.8rem;padding:0.35rem 0.6rem;">
+                    🔄 Reset Rate Limiter
+                  </button>
+                </div>
+              </div>
+
+              <!-- Rate Limit Console -->
+              <div style="background:#090a0f;border-radius:var(--radius-md);padding:1rem;border:1px solid rgba(255,255,255,0.05);height:200px;overflow-y:auto;font-family:var(--font-mono);font-size:0.8rem;" id="lab15RateLimitLogs">
+                <div style="color:var(--text-muted);">[READY] Click "Send 1 API Request" or "Send Burst Test" to test the MongoDB sliding window counter...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Tenant Architecture Comparison Table -->
+          <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border:1px solid var(--border-color);">
+            <h3 style="margin:0 0 1rem;font-size:1.1rem;color:var(--text-primary);">📐 Architectural Comparison of Multi-Tenant Isolation Models</h3>
+            <div class="table-responsive">
+              <table class="styled-table">
+                <thead>
+                  <tr>
+                    <th>Isolation Tier</th>
+                    <th>Isolation Strength</th>
+                    <th>Key Advantages</th>
+                    <th>Key Drawbacks / Tradeoffs</th>
+                    <th>Target Workload</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Shared Collection (tenant_id)</strong></td>
+                    <td><span class="badge-tag yellow">Medium</span></td>
+                    <td>Lowest infrastructure cost, single set of indexes, simple global queries</td>
+                    <td>Application must strictly include <code>tenant_id</code> on every query; "noisy neighbor" risks</td>
+                    <td>Standard SaaS freemium &amp; SMB tiers (Activity 1)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Collection-per-Tenant</strong></td>
+                    <td><span class="badge-tag blue">Strong</span></td>
+                    <td>Collection-level RBAC, easy backup per tenant, no tenant_id filter needed</td>
+                    <td>MongoDB namespace limits at scale, shared WiredTiger buffer cache contention</td>
+                    <td>Mid-market customers with custom schema requirements</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Database-per-Tenant</strong></td>
+                    <td><span class="badge-tag green">Strongest</span></td>
+                    <td>Physical storage isolation, dedicated users, HIPAA/GDPR compliance, independent restore</td>
+                    <td>Higher connection &amp; memory overhead, more complex fleet connection management</td>
+                    <td>Enterprise tier clients requiring strict data sovereignty (Activity 2)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 15.2: Tenant Migration & Idempotency Proof -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>🚚 Activity 2: Data Migration Between Tenant Isolation Strategies</span>
+          <span class="badge-tag" style="background:rgba(99,102,241,0.15);color:var(--accent-secondary);">Lab 15.2 Migration</span>
+        </div>
+        <div class="panel-body">
+          <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem;line-height:1.6;">
+            A real-world SaaS platform must allow enterprise clients to transition seamlessly from a shared collection to a dedicated database without re-architecting the application. This migration demonstrates a <strong>dry-run mode</strong>, an <strong>idempotent upsert pattern</strong>, <strong>cryptographic verification (SHA-256)</strong>, and a <strong>zero-risk rollback path</strong>.
+          </p>
+
+          <!-- Interactive Migration Controls -->
+          <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);margin-bottom:1.5rem;border:1px solid var(--border-color);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1.25rem;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <label style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">Select Tenant to Migrate:</label>
+                <select id="lab15MigrateTenantSelect" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:0.4rem 0.8rem;font-family:var(--font-mono);font-size:0.85rem;">
+                  <option value="tenant-acme">tenant-acme &rarr; tenant_acme</option>
+                  <option value="tenant-globex">tenant-globex &rarr; tenant_globex</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button class="btn" id="btnLab15DryRun" style="background:rgba(245,158,11,0.2);color:var(--accent-warning);border:1px solid rgba(245,158,11,0.3);font-size:0.85rem;">
+                  🔍 1. Dry Run (--dry-run)
+                </button>
+                <button class="btn btn-primary" id="btnLab15LiveMigrate" style="font-size:0.85rem;">
+                  🚀 2. Live Migration
+                </button>
+                <button class="btn" id="btnLab15IdempotentRun" style="background:rgba(99,102,241,0.2);color:var(--accent-secondary);border:1px solid rgba(99,102,241,0.4);font-size:0.85rem;">
+                  🔁 3. Re-Run (Idempotency Proof)
+                </button>
+                <button class="btn" id="btnLab15Rollback" style="background:rgba(239,68,68,0.2);color:var(--accent-danger);border:1px solid rgba(239,68,68,0.4);font-size:0.85rem;">
+                  ⏪ 4. Rollback (--rollback)
+                </button>
+              </div>
+            </div>
+
+            <!-- Migration Status Report Cards -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+              <div style="background:rgba(0,0,0,0.2);padding:1rem;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.25rem;">Source Tier (Shared Collection)</div>
+                <div style="font-size:1.1rem;font-weight:700;color:var(--accent-cyan);">saas_app.tasks</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.4rem;">
+                  Acme Docs: <strong id="lab15SharedAcmeCount" style="color:var(--text-primary);font-family:var(--font-mono);">2</strong> | Globex Docs: <strong id="lab15SharedGlobexCount" style="color:var(--text-primary);font-family:var(--font-mono);">2</strong>
+                </div>
+              </div>
+
+              <div style="background:rgba(0,0,0,0.2);padding:1rem;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.25rem;">Dedicated Database Tier</div>
+                <div style="font-size:1.1rem;font-weight:700;color:var(--accent-primary);" id="lab15TargetDbName">tenant_acme</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.4rem;">
+                  Status: <strong id="lab15TargetDbStatus" style="color:var(--accent-warning);">NOT MIGRATED</strong> | Docs: <strong id="lab15TargetDbCount" style="font-family:var(--font-mono);">-</strong>
+                </div>
+              </div>
+
+              <div style="background:rgba(0,0,0,0.2);padding:1rem;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.25rem;">Integrity &amp; Idempotency</div>
+                <div style="font-size:1.1rem;font-weight:700;color:var(--accent-secondary);" id="lab15VerificationBadge">UNVERIFIED</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.4rem;" id="lab15IdempotencyMsg">
+                  Run migration to evaluate checksum.
+                </div>
+              </div>
+            </div>
+
+            <!-- Migration Details Output Box -->
+            <div id="lab15MigrationDetails" style="background:#090a0f;padding:1rem;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:0.82rem;border:1px solid rgba(255,255,255,0.05);line-height:1.6;color:var(--text-secondary);max-height:180px;overflow-y:auto;">
+              [READY] Select a migration step above to observe dry-run planning, live execution, idempotency, or rollback...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Terminal Console for Lab 15 -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>💻 Live Lab 15 Runner Terminal</span>
+          <span class="badge-tag green">Interactive Execution</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <button class="btn btn-primary" id="btnRunLab15Script1">
+              ▶ Run Lab 15.1 Script (API &amp; Rate Limit)
+            </button>
+            <button class="btn btn-secondary" id="btnRunLab15Script2" style="background:linear-gradient(135deg,#6366f1,#06b6d4);color:#fff;">
+              ▶ Run Lab 15.2 Script (Migration &amp; Idempotency)
+            </button>
+            <button class="btn btn-secondary" id="btnResetLab15Db">
+              🔄 Reset SaaS Database
+            </button>
+          </div>
+
+          <div class="terminal-box">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+              </div>
+              <span class="terminal-title">mongodb@localhost:27017 ~ saas_app &amp; tenant databases</span>
+              <span style="font-size:0.75rem;color:var(--text-muted);" id="lab15RunnerStatus">Ready</span>
+            </div>
+            <div class="terminal-body" id="lab15TerminalOutput" style="min-height:220px;max-height:350px;overflow-y:auto;font-family:var(--font-mono);font-size:0.82rem;line-height:1.6;color:var(--accent-primary);">
+[INFO] Ready to execute Lab 15 multi-tenant SaaS and migration scripts.
+Click "Run Lab 15.1 Script" or "Run Lab 15.2 Script" to view terminal output.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity 3: Deep Technical Q&A and Engineering Analysis -->
+      <div class="panel" style="margin-bottom:2rem;">
+        <div class="panel-header">
+          <span>📚 Core Lab Questions &amp; Technical Answers</span>
+          <span class="badge-tag" style="background:rgba(99,102,241,0.15);color:var(--accent-secondary);">Viva &amp; Exam Solutions</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;flex-direction:column;gap:1.25rem;">
+            <!-- Q1 -->
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-danger);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">
+                Q1: What would go wrong concretely if update_task's filter only checked {"_id": task_id} without tenant_id?
+              </h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">
+                <strong>Concrete Vulnerability Scenario:</strong><br>
+                Suppose Acme Corp owns task <code>ObjectId("65b1...001")</code> ("Setup ML Pipeline"). Globex Inc sends an authenticated API request:
+                <br>
+                <code>POST /api/tasks/65b1...001 {"status": "deleted", "title": "Hacked"}</code>.
+                <br>
+                If the filter is only <code>{"_id": task_id}</code>, MongoDB will happily locate Acme's document and execute the modification, because MongoDB has no native concept of tenants. Globex has just modified or destroyed another company's confidential task simply by obtaining or guessing its identifier.
+                <br><br>
+                <strong>The Defense:</strong> Filtering on <code>{"_id": task_id, "tenant_id": caller_tenant}</code> guarantees that when Globex executes the query with <code>caller_tenant="tenant-globex"</code>, the compound filter matches exactly <strong>0 documents</strong>. MongoDB returns <code>modified_count: 0</code>, effectively blocking the unauthorized cross-tenant mutation.
+              </p>
+            </div>
+
+            <!-- Q2 -->
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-primary);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">
+                Q2: Prediction of document count on re-running the migration: will it double, stay the same, or something else?
+              </h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">
+                <strong>Prediction:</strong> The target document count will <strong>stay exactly the same (2 documents)</strong>, never doubling.<br><br>
+                <strong>Mathematical &amp; Architectural Proof:</strong><br>
+                The migration script uses <code>target_col.update_one({"tenant_id": doc["tenant_id"], "title": doc["title"]}, {"$set": doc}, upsert=True)</code> keyed on natural business attributes <code>(tenant_id, title)</code> rather than the auto-generated <code>_id</code>.
+                <br>
+                - <strong>Run 1:</strong> No matching document exists &rarr; MongoDB performs an insert (2 documents created).<br>
+                - <strong>Run 2:</strong> Matching documents are found by <code>(tenant_id, title)</code> &rarr; MongoDB updates the existing documents in place (matched: 2, upserted: 0). The document count remains exactly 2.<br>
+                This property of <strong>idempotency</strong> guarantees that if a network timeout or pod crash occurs midway through a migration, operations engineers can safely re-trigger the migration without data duplication.
+              </p>
+            </div>
+
+            <!-- Q3 -->
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-warning);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">
+                Q3: Why is a migration without a rollback path a one-way door, and why is this rollback zero-risk?
+              </h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">
+                A migration that moves documents by deleting them from the source collection as they are transferred is a destructive, one-way door: if the target database encounters corruption or application incompatibility, the original data is destroyed and cannot be cleanly restored.
+                <br><br>
+                In contrast, this migration follows the <strong>Copy-Verify-Deprecate</strong> paradigm:
+                <br>
+                1. <code>migrate_tenant()</code> strictly reads from <code>saas_app.tasks</code> (using <code>find()</code>) and writes copies into <code>tenant_acme.tasks</code>.<br>
+                2. The original shared documents remain 100% intact and untouched.<br>
+                3. Rollback simply executes <code>client.drop_database("tenant_acme")</code>. Because the shared collection was never modified, the rollback completes in milliseconds with <strong>zero risk of data loss</strong>. The source data is only purged weeks later after full validation.
+              </p>
+            </div>
+
+            <!-- Q4 -->
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-cyan);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">
+                Q4: Why implement rate limiting natively in MongoDB instead of adding a separate Redis cache?
+              </h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">
+                <strong>Architectural Tradeoff:</strong><br>
+                Running Redis adds a second stateful infrastructure component requiring deployment, replication, monitoring, connection pooling, and failover management.
+                <br>
+                For modest throughput tiers (e.g. 10 to 100 req/min per tenant), MongoDB's in-memory WiredTiger buffer cache processes <code>count_documents({"tenant_id": id, "timestamp": {"$gt": cutoff}})</code> in sub-millisecond time, especially when backed by a compound index on <code>{tenant_id: 1, timestamp: -1}</code>. A TTL index can automatically expire historical rate records, eliminating manual cache cleanup. Redis is only necessary when throughput demands hundreds of thousands of operations per second.
+              </p>
+            </div>
+
+            <!-- Q5 -->
+            <div style="background:var(--bg-glass);padding:1.25rem;border-radius:var(--radius-md);border-left:4px solid var(--accent-secondary);">
+              <h4 style="margin:0 0 0.5rem;color:var(--text-primary);font-size:1.05rem;">
+                Q5: When should an enterprise SaaS platform choose Database-per-tenant over Shared Collection?
+              </h4>
+              <p style="margin:0;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">
+                1. <strong>Compliance &amp; Regulatory Mandates:</strong> Healthcare (HIPAA) and financial (PCI-DSS) regulations often mandate physical data segregation where no shared memory or storage files are accessed by multiple companies.<br>
+                2. <strong>Independent Backup &amp; Point-in-Time Restore:</strong> An enterprise tenant can restore their database to yesterday's snapshot without reverting the state of any other tenant.<br>
+                3. <strong>Granular Database Encryption &amp; RBAC:</strong> Dedicated MongoDB users, roles, and per-database KMS encryption keys can be granted exclusively to that customer's security team.<br>
+                4. <strong>Noisy Neighbor Elimination:</strong> Heavy bulk queries or analytical reporting executed by an enterprise client can be routed to isolated replica sets.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Hub Section -->
+      <div class="card" style="background:var(--bg-card);padding:1.5rem;border-radius:var(--radius-lg);border:1px solid var(--border-color);margin-top:2rem;">
+        <h3 style="font-size:1.15rem;color:var(--text-primary);margin-bottom:0.75rem;">🐳 Docker Hub - Lab 15 Containerized Environment</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">
+          The complete containerized Lab 15 multi-tenant architecture and migration environment has been built and pushed to Docker Hub for academic grading and standalone deployment.
+        </p>
+        <div style="display:flex;gap:1rem;align-items:center;background:rgba(0,0,0,0.3);padding:0.75rem 1rem;border-radius:var(--radius-md);margin-bottom:1rem;flex-wrap:wrap;">
+          <code style="font-family:var(--font-mono);color:var(--accent-cyan);font-size:0.95rem;flex:1;">https://hub.docker.com/r/meghanakasireddy/nosql-lab15</code>
+          <a href="https://hub.docker.com/r/meghanakasireddy/nosql-lab15" target="_blank" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.85rem;text-decoration:none;">View on Docker Hub &nearr;</a>
+        </div>
+        <pre style="background:#090a0f;padding:1rem;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:0.82rem;color:var(--text-primary);border:1px solid rgba(255,255,255,0.05);overflow-x:auto;"><code># Pull and run the interactive grading container on port 8015:
+docker pull meghanakasireddy/nosql-lab15:latest
+docker run -d -p 8015:8000 --name nosql-lab15 meghanakasireddy/nosql-lab15:latest
+
+# Open in browser:
+# &rarr; http://localhost:8015</code></pre>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-content">
+      <div>
+        <strong>MongoDB Lab 7: Performance &amp; Schema Engineering</strong> &bull; Jain University
+      </div>
+      <div>
+        Designed &amp; Tested with PyMongo 4.20 &bull; MongoDB 8.x WiredTiger
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

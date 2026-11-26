@@ -1,0 +1,53 @@
+{
+  "activity": "Activity 6.2 Try-It-Yourself",
+  "author": "Kasireddy Meghana (USN: 24BTRCL119)",
+  "large_payload_benchmark": {
+    "doc_payload_bytes": 2048,
+    "iterations": 2000,
+    "non_covered_ms": 0.634,
+    "covered_ms": 0.527,
+    "speedup_factor": 1.2
+  },
+  "esr_in_memory_sort_demo": {
+    "good_index": {
+      "keys": [
+        [
+          "status",
+          1
+        ],
+        [
+          "reading",
+          -1
+        ],
+        [
+          "sensor_id",
+          1
+        ]
+      ],
+      "stage": "FETCH",
+      "in_memory_sort": false,
+      "docs_examined": 1001,
+      "keys_examined": 1502
+    },
+    "bad_index": {
+      "keys": [
+        [
+          "status",
+          1
+        ],
+        [
+          "sensor_id",
+          1
+        ],
+        [
+          "reading",
+          -1
+        ]
+      ],
+      "stage": "FETCH",
+      "in_memory_sort": true,
+      "docs_examined": 1001,
+      "keys_examined": 1001
+    }
+  }
+}

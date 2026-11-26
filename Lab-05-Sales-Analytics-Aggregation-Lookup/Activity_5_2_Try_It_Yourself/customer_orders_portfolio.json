@@ -1,0 +1,99 @@
+{
+  "complete_invoices": [
+    {
+      "_id": "6afd739e27b137ac8356b9b0",
+      "order_id": "ORD-301",
+      "date": "2024-03-01",
+      "order_total": 350,
+      "customer_name": "Arjun",
+      "customer_city": "Bangalore",
+      "item_count": 2,
+      "item_names": [
+        "Widget A",
+        "Gadget B"
+      ]
+    },
+    {
+      "_id": "6afd739e27b137ac8356b9b1",
+      "order_id": "ORD-302",
+      "date": "2024-03-02",
+      "order_total": 150,
+      "customer_name": "Sneha",
+      "customer_city": "Mumbai",
+      "item_count": 1,
+      "item_names": [
+        "Widget C"
+      ]
+    },
+    {
+      "_id": "6afd739e27b137ac8356b9b2",
+      "order_id": "ORD-303",
+      "date": "2024-03-05",
+      "order_total": 680,
+      "customer_name": "Rahul",
+      "customer_city": "Delhi",
+      "item_count": 3,
+      "item_names": [
+        "Widget A",
+        "Gadget D",
+        "Widget E"
+      ]
+    },
+    {
+      "_id": "6afd739e27b137ac8356b9b3",
+      "order_id": "ORD-304",
+      "date": "2024-03-08",
+      "order_total": 300,
+      "customer_name": "Arjun",
+      "customer_city": "Bangalore",
+      "item_count": 2,
+      "item_names": [
+        "Gadget B",
+        "Widget C"
+      ]
+    }
+  ],
+  "inactive_customers": [
+    {
+      "customer_id": "C104",
+      "name": "Vikram",
+      "tier": "Bronze",
+      "city": "Chennai"
+    }
+  ],
+  "category_sales_performance": [
+    {
+      "_id": "Electronics",
+      "units_ordered": 4,
+      "estimated_revenue": 700,
+      "unique_products": [
+        "Widget C",
+        "Widget A"
+      ]
+    },
+    {
+      "_id": "Accessories",
+      "units_ordered": 2,
+      "estimated_revenue": 300,
+      "unique_products": [
+        "Gadget B"
+      ]
+    },
+    {
+      "_id": "Tools",
+      "units_ordered": 1,
+      "estimated_revenue": 280,
+      "unique_products": [
+        "Gadget D"
+      ]
+    },
+    {
+      "_id": "Consumables",
+      "units_ordered": 1,
+      "estimated_revenue": 200,
+      "unique_products": [
+        "Widget E"
+      ]
+    }
+  ]
+}

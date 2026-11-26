@@ -1,0 +1,32 @@
+{
+  "lab": "Lab 7.2 - Working Set Analysis",
+  "student": "Kasireddy Meghana",
+  "usn": "24BTRCL119",
+  "inserted_docs": 100000,
+  "insert_time_sec": 2.21,
+  "cache_metrics": {
+    "maximum_bytes": 7845445632,
+    "bytes_in_use": 369499685,
+    "dirty_bytes": 226620521,
+    "pages_read": 518,
+    "pages_evicted": 0,
+    "approx_hit_ratio": 1.0
+  },
+  "query_timings": [
+    {
+      "range": "0-1000",
+      "count": 1001,
+      "elapsed_ms": 211.5
+    },
+    {
+      "range": "49000-50000",
+      "count": 1001,
+      "elapsed_ms": 189.2
+    },
+    {
+      "range": "99000-100000",
+      "count": 1000,
+      "elapsed_ms": 196.31
+    }
+  ]
+}
